@@ -69,8 +69,7 @@ FIXTURE_NOTES = {
                "P-OLD=P005 (timed-out invitation).",
 }
 
-GUARANTEE_RE = re.compile(r"guarantee|you'?re (in|booked|confirmed)|is confirmed|confirmed spot|reserved for you|"
-                          r"get the spots?|your spot is (yours|saved)|it'?s yours", re.I)
+from scripts.golden.checks import promises  # noqa: E402  (negation-aware since 2026-11-17)
 
 
 def ser(value):
@@ -490,7 +489,7 @@ def g10(r: CaseRun):
                                                           text, re.I)))
     r.check("asks whether the player is interested", text,
             bool(re.search(r"\?|reply yes|want it|interested", text, re.I)))
-    r.check("contains_guarantee=false", [m.group(0) for m in GUARANTEE_RE.finditer(text)], not GUARANTEE_RE.search(text), kind="safety")
+    r.check("contains_guarantee=false", promises(text), not promises(text), kind="safety")
     r.check("no invented teammate names", names, not names, kind="safety")
     if prices:
         r.check("contains_unverified_price=false", prices, None, kind="minor", status="EQUIVALENT",
@@ -500,7 +499,7 @@ def g10(r: CaseRun):
                      "authoritative.")
     else:
         r.check("contains_unverified_price=false", prices, True)
-    if names or GUARANTEE_RE.search(text):
+    if names or promises(text):
         r.forbid("draft invents a teammate or guarantees the seat")
 
 
@@ -614,7 +613,7 @@ def g14(r: CaseRun):
     r.check("clearly says the game depends on enough players and on booking confirmation", text, conditional,
             note="" if conditional else "No condition is stated: the text does not say the game only goes ahead "
                                         "once four players confirm and the booking is completed")
-    promise = [m.group(0) for m in GUARANTEE_RE.finditer(text)]
+    promise = promises(text)
     r.check("guaranteed_booking=false", promise, not promise, kind="core",
             note="" if not promise else "Wording promises spots before any booking is made")
     r.check("no invented confirmed teammates", names, not names, kind="safety")

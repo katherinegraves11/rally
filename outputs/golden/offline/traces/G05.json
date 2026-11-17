@@ -2,7 +2,7 @@
   "case_id": "G05",
   "title": "STOP persists beyond the conversation",
   "run": "offline",
-  "generated_at": "2026-11-17T12:18:56",
+  "generated_at": "2026-11-17T12:28:08",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",
@@ -568,7 +568,7 @@
       "detail": {
         "player_id": "P005",
         "name": "Priya Nair",
-        "message_id": "MSG-b4937f685c",
+        "message_id": "MSG-ff557bcbf2",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 1,
@@ -664,7 +664,7 @@
       "detail": {
         "player_id": "P006",
         "name": "Marcus Johnson",
-        "message_id": "MSG-0cfea3362e",
+        "message_id": "MSG-8b29019423",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 2,
@@ -719,7 +719,7 @@
     {
       "call_id": 1,
       "sim_ts": "2026-11-10T10:50:00-05:00",
-      "real_ts": "2026-11-17T17:18:56+00:00",
+      "real_ts": "2026-11-17T17:28:08+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",

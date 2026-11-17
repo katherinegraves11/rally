@@ -2,7 +2,7 @@
   "case_id": "G12",
   "title": "Provider outage must not become fake confirmation",
   "run": "offline",
-  "generated_at": "2026-11-17T12:18:57",
+  "generated_at": "2026-11-17T12:28:08",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",
@@ -840,7 +840,7 @@
       "detail": {
         "player_id": "P030",
         "name": "Ruth Abrams",
-        "message_id": "MSG-afe637be7f",
+        "message_id": "MSG-928d9f23d7",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 1,
@@ -860,7 +860,7 @@
       "detail": {
         "player_id": "P035",
         "name": "Carmen Flores",
-        "message_id": "MSG-9ef1a552b7",
+        "message_id": "MSG-3667522b5c",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 2,
@@ -880,7 +880,7 @@
       "detail": {
         "player_id": "P031",
         "name": "Felipe Duarte",
-        "message_id": "MSG-2086900c44",
+        "message_id": "MSG-5baacc5ee9",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 3,
@@ -900,7 +900,7 @@
       "detail": {
         "player_id": "P033",
         "name": "Gabriel Nunes",
-        "message_id": "MSG-5b27649820",
+        "message_id": "MSG-96fa798749",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 4,
@@ -920,7 +920,7 @@
       "detail": {
         "player_id": "P032",
         "name": "Anika Sharma",
-        "message_id": "MSG-8b81489724",
+        "message_id": "MSG-0dd4ef28b6",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 5,
@@ -940,7 +940,7 @@
       "detail": {
         "player_id": "P034",
         "name": "Yuki Ito",
-        "message_id": "MSG-5c0a69db72",
+        "message_id": "MSG-88ba74f8ed",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 6,
@@ -1423,7 +1423,7 @@
     {
       "call_id": 4,
       "sim_ts": "2026-11-10T10:56:00-05:00",
-      "real_ts": "2026-11-17T17:18:57+00:00",
+      "real_ts": "2026-11-17T17:28:08+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1440,7 +1440,7 @@
     {
       "call_id": 3,
       "sim_ts": "2026-11-10T10:54:00-05:00",
-      "real_ts": "2026-11-17T17:18:57+00:00",
+      "real_ts": "2026-11-17T17:28:08+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1457,7 +1457,7 @@
     {
       "call_id": 2,
       "sim_ts": "2026-11-10T10:52:00-05:00",
-      "real_ts": "2026-11-17T17:18:57+00:00",
+      "real_ts": "2026-11-17T17:28:08+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1474,7 +1474,7 @@
     {
       "call_id": 1,
       "sim_ts": "2026-11-10T10:50:00-05:00",
-      "real_ts": "2026-11-17T17:18:57+00:00",
+      "real_ts": "2026-11-17T17:28:08+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",

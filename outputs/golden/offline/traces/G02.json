@@ -2,7 +2,7 @@
   "case_id": "G02",
   "title": "Decline moves to the next approved person",
   "run": "offline",
-  "generated_at": "2026-11-17T12:18:56",
+  "generated_at": "2026-11-17T12:28:07",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",
@@ -150,7 +150,7 @@
         {
           "player_id": "P006",
           "name": "Marcus Johnson",
-          "message_id": "MSG-d64743cf6a",
+          "message_id": "MSG-43854e73d1",
           "channel": "simulated_whatsapp",
           "reply_deadline": "2026-11-10T11:10:00-05:00",
           "send_number": 2,
@@ -559,7 +559,7 @@
       "detail": {
         "player_id": "P005",
         "name": "Priya Nair",
-        "message_id": "MSG-c6d0263cec",
+        "message_id": "MSG-82a9fe9bc9",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 1,
@@ -654,7 +654,7 @@
       "detail": {
         "player_id": "P006",
         "name": "Marcus Johnson",
-        "message_id": "MSG-d64743cf6a",
+        "message_id": "MSG-43854e73d1",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 2,
@@ -695,7 +695,7 @@
     {
       "call_id": 1,
       "sim_ts": "2026-11-10T10:50:00-05:00",
-      "real_ts": "2026-11-17T17:18:56+00:00",
+      "real_ts": "2026-11-17T17:28:07+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",

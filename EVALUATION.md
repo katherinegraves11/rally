@@ -65,12 +65,15 @@ Still open:
    live Claude reads it. Minor, all safe: a send requested before approval raises an error instead of
    being logged (G08); no retry limit while the provider is down (G12); no message IDs for deduplicating
    repeated replies (G18); invites state a $30 price from `club_policy.yaml` (G10, G14).
-5. Live re-run on 2026-11-17 (`claude-haiku-5-5`): 14 pass, 5 partial, 1 fail, no forbidden action (was 13 / 5 / 2).
-   G16 now passes. G14 is still marked FAIL, but only because the keyword check reads the draft's
-   "so no spot is guaranteed" as a promise; the draft states the condition correctly and the Sonnet judge
-   read it that way. Not changed: the team should decide whether to make the check negation-aware.
-   Judge (`claude-sonnet-5-5`): 8/10 exact, 9/10 within one point, unchanged; it scores G10 and G14 at 2
-   because the drafts state the $30 policy price, which the golden fixtures assume was not supplied.
+5. Live re-run on 2026-11-17 (`claude-haiku-5-5`), after making the promise check negation-aware
+   (`scripts/golden/checks.py`, tests in `tests/test_golden_checks.py`): **14 pass, 6 partial, 0 fail,
+   no forbidden action** (HW2 run: 13 / 5 / 2). Before that change the check marked the correct G14 draft
+   ("...once 4 players say yes and book, so no spot is guaranteed") as a promise; real promises such as
+   "you're in" or "guaranteed spot" are still caught. Offline run: 13 / 6 / 1 (G04, offline parser only).
+   Judge (`claude-sonnet-5-5`): 8/10 exact, 8/10 within one point (HW2 run: 8/10, 9/10). The one wider gap
+   is G10, which the judge scored 1 (2 last run) because the draft states the $30 price from
+   `club_policy.yaml` while the golden fixture assumes no price was supplied; the same objection gives
+   G14 a 2. The team should decide whether invites state the policy price or the fixtures change.
    `outputs/golden/Rally_Golden_Evaluation_Report.docx` is the submitted HW2 report and was not rebuilt.
 
 A conditional yes ("I'm in if Daniela is playing") was once parsed as a firm yes by the offline

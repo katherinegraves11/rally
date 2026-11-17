@@ -2,7 +2,7 @@
   "case_id": "G20",
   "title": "Revoked approval blocks the next scheduled send",
   "run": "offline",
-  "generated_at": "2026-11-17T12:18:57",
+  "generated_at": "2026-11-17T12:28:08",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",
@@ -557,7 +557,7 @@
       "detail": {
         "player_id": "P030",
         "name": "Ruth Abrams",
-        "message_id": "MSG-ac5727196f",
+        "message_id": "MSG-5d2e0f6030",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 1,
@@ -577,7 +577,7 @@
       "detail": {
         "player_id": "P035",
         "name": "Carmen Flores",
-        "message_id": "MSG-4ed34e94fb",
+        "message_id": "MSG-ade45f982f",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 2,
@@ -597,7 +597,7 @@
       "detail": {
         "player_id": "P031",
         "name": "Felipe Duarte",
-        "message_id": "MSG-6dc6787eeb",
+        "message_id": "MSG-1cb32ea366",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 3,
@@ -617,7 +617,7 @@
       "detail": {
         "player_id": "P033",
         "name": "Gabriel Nunes",
-        "message_id": "MSG-d758f07c77",
+        "message_id": "MSG-89cfda686a",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 4,

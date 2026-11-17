@@ -2,7 +2,7 @@
   "case_id": "G10",
   "title": "Missing-player invite must use verified facts",
   "run": "offline",
-  "generated_at": "2026-11-17T12:18:56",
+  "generated_at": "2026-11-17T12:28:08",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",

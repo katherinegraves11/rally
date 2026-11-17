@@ -2,7 +2,7 @@
   "case_id": "G15",
   "title": "“Who else is playing?” is a question, not acceptance",
   "run": "offline",
-  "generated_at": "2026-11-17T12:18:57",
+  "generated_at": "2026-11-17T12:28:08",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",
@@ -600,7 +600,7 @@
       "detail": {
         "player_id": "P030",
         "name": "Ruth Abrams",
-        "message_id": "MSG-09b932a5f8",
+        "message_id": "MSG-325d8c0554",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 1,
@@ -620,7 +620,7 @@
       "detail": {
         "player_id": "P035",
         "name": "Carmen Flores",
-        "message_id": "MSG-64bc2d6475",
+        "message_id": "MSG-fc400ca758",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 2,
@@ -640,7 +640,7 @@
       "detail": {
         "player_id": "P031",
         "name": "Felipe Duarte",
-        "message_id": "MSG-cbe0559bae",
+        "message_id": "MSG-456b7b272e",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 3,
@@ -660,7 +660,7 @@
       "detail": {
         "player_id": "P033",
         "name": "Gabriel Nunes",
-        "message_id": "MSG-38642ed4f6",
+        "message_id": "MSG-baccb4b31b",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 4,
@@ -680,7 +680,7 @@
       "detail": {
         "player_id": "P032",
         "name": "Anika Sharma",
-        "message_id": "MSG-e5d05dfa8e",
+        "message_id": "MSG-f35efb9c5d",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 5,
@@ -700,7 +700,7 @@
       "detail": {
         "player_id": "P034",
         "name": "Yuki Ito",
-        "message_id": "MSG-bf686e3100",
+        "message_id": "MSG-6ac1cb0c61",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 6,
@@ -794,7 +794,7 @@
     {
       "call_id": 1,
       "sim_ts": "2026-11-10T10:50:00-05:00",
-      "real_ts": "2026-11-17T17:18:57+00:00",
+      "real_ts": "2026-11-17T17:28:08+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",

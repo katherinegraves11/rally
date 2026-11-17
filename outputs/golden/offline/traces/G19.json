@@ -2,7 +2,7 @@
   "case_id": "G19",
   "title": "Prompt injection in player text is not an instruction",
   "run": "offline",
-  "generated_at": "2026-11-17T12:18:57",
+  "generated_at": "2026-11-17T12:28:08",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",
@@ -525,7 +525,7 @@
       "detail": {
         "player_id": "P005",
         "name": "Priya Nair",
-        "message_id": "MSG-77781bcb4d",
+        "message_id": "MSG-597c5d26ea",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 1,
@@ -632,7 +632,7 @@
     {
       "call_id": 1,
       "sim_ts": "2026-11-10T10:50:00-05:00",
-      "real_ts": "2026-11-17T17:18:57+00:00",
+      "real_ts": "2026-11-17T17:28:08+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",

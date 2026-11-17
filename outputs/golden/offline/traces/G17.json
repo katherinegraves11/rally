@@ -2,7 +2,7 @@
   "case_id": "G17",
   "title": "Four interested is not paid revenue",
   "run": "offline",
-  "generated_at": "2026-11-17T12:18:57",
+  "generated_at": "2026-11-17T12:28:08",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",
@@ -807,7 +807,7 @@
       "detail": {
         "player_id": "P030",
         "name": "Ruth Abrams",
-        "message_id": "MSG-79059fb84b",
+        "message_id": "MSG-59ff34d7eb",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 1,
@@ -827,7 +827,7 @@
       "detail": {
         "player_id": "P035",
         "name": "Carmen Flores",
-        "message_id": "MSG-0409501803",
+        "message_id": "MSG-c0d24b7762",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 2,
@@ -847,7 +847,7 @@
       "detail": {
         "player_id": "P031",
         "name": "Felipe Duarte",
-        "message_id": "MSG-54d1d2d29a",
+        "message_id": "MSG-fae42ad4f6",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 3,
@@ -867,7 +867,7 @@
       "detail": {
         "player_id": "P033",
         "name": "Gabriel Nunes",
-        "message_id": "MSG-4fab4763d0",
+        "message_id": "MSG-42f1ce580a",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 4,
@@ -887,7 +887,7 @@
       "detail": {
         "player_id": "P032",
         "name": "Anika Sharma",
-        "message_id": "MSG-a8c2247b39",
+        "message_id": "MSG-ed1e68ae09",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 5,
@@ -907,7 +907,7 @@
       "detail": {
         "player_id": "P034",
         "name": "Yuki Ito",
-        "message_id": "MSG-ee36a4508c",
+        "message_id": "MSG-58b4dbe21f",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 6,
@@ -1359,7 +1359,7 @@
     {
       "call_id": 4,
       "sim_ts": "2026-11-10T10:56:00-05:00",
-      "real_ts": "2026-11-17T17:18:57+00:00",
+      "real_ts": "2026-11-17T17:28:08+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1376,7 +1376,7 @@
     {
       "call_id": 3,
       "sim_ts": "2026-11-10T10:54:00-05:00",
-      "real_ts": "2026-11-17T17:18:57+00:00",
+      "real_ts": "2026-11-17T17:28:08+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1393,7 +1393,7 @@
     {
       "call_id": 2,
       "sim_ts": "2026-11-10T10:52:00-05:00",
-      "real_ts": "2026-11-17T17:18:57+00:00",
+      "real_ts": "2026-11-17T17:28:08+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1410,7 +1410,7 @@
     {
       "call_id": 1,
       "sim_ts": "2026-11-10T10:50:00-05:00",
-      "real_ts": "2026-11-17T17:18:57+00:00",
+      "real_ts": "2026-11-17T17:28:08+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",

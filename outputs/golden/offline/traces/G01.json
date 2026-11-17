@@ -2,7 +2,7 @@
   "case_id": "G01",
   "title": "Firm acceptance does not equal a booking",
   "run": "offline",
-  "generated_at": "2026-11-17T12:18:56",
+  "generated_at": "2026-11-17T12:28:07",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",
@@ -561,7 +561,7 @@
       "detail": {
         "player_id": "P006",
         "name": "Marcus Johnson",
-        "message_id": "MSG-1f54c1e5c4",
+        "message_id": "MSG-7aa999d3ea",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 1,
@@ -784,7 +784,7 @@
     {
       "call_id": 1,
       "sim_ts": "2026-11-10T10:50:00-05:00",
-      "real_ts": "2026-11-17T17:18:56+00:00",
+      "real_ts": "2026-11-17T17:28:07+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
