@@ -6,8 +6,10 @@
 # Stop them with: scripts/stop_prototype.sh
 cd "$(dirname "$0")/.." || exit 1
 mkdir -p runtime
+# Cross-links between the two apps; set these to public URLs when sharing through a tunnel.
+export RALLY_PLAYER_APP_URL="${RALLY_PLAYER_APP_URL:-http://localhost:8600}"
 nohup .venv/bin/streamlit run app.py --server.port 8517 --server.headless true > runtime/dashboard.log 2>&1 &
-RALLY_DASHBOARD_URL=http://localhost:8517 nohup .venv/bin/uvicorn player_app.main:app --port 8600 --host 127.0.0.1 \
+RALLY_DASHBOARD_URL="${RALLY_DASHBOARD_URL:-http://localhost:8517}" nohup .venv/bin/uvicorn player_app.main:app --port 8600 --host 127.0.0.1 \
   > runtime/player_app.log 2>&1 &
 echo "Club dashboard: http://localhost:8517"
 echo "Player app:     http://localhost:8600"
