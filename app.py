@@ -118,6 +118,10 @@ def flash(scope: str) -> None:
 def sidebar() -> None:
     policy = engine.policy()
     with st.sidebar:
+        player_url = os.environ.get("RALLY_PLAYER_APP_URL", "http://localhost:8600")
+        st.link_button("📱 Open the player app", player_url, width="stretch",
+                       help="The player-facing side, on the same engine and data. Run: "
+                            "uvicorn player_app.main:app --port 8600")
         st.markdown("#### 🕒 Simulated clock")
         now = engine.now()
         st.markdown(f"<div class='clock'>{day_label(now)} · {time_label(now)}</div>", unsafe_allow_html=True)
@@ -358,6 +362,13 @@ def approval_panel(v: OpportunityView) -> None:
         c1, c2 = st.columns(2)
         max_sends = c1.number_input("Max invitations", min_value=1, max_value=max(1, len(selected)),
                                     value=max(1, len(selected)))
+        first_wave = None
+        need = policy.empty_court.min_group_size
+        if not is_mp and len(selected) > need:
+            first_wave = c1.number_input(
+                "First wave", min_value=need, max_value=max(need, len(selected)), value=len(selected),
+                help="How many get the invite now. The rest are approved backups, invited automatically (within "
+                     "max invitations) only if the first wave can't fill the court.")
         end_time = c2.time_input("Outreach window ends", value=latest_end.time(), step=300,
                                  help=f"Must be at least {policy.timing.min_lead_time_minutes} min before the game")
         channels = st.multiselect("Channels (simulated)", policy.consent.allowed_channels,
@@ -376,8 +387,9 @@ def approval_panel(v: OpportunityView) -> None:
     if submitted:
         window_end = v.opp.start.replace(hour=end_time.hour, minute=end_time.minute, second=0, microsecond=0)
         msg_source = source if message == template else f"manager_edited (from {source})"
+        wave = int(first_wave) if first_wave and int(first_wave) < int(max_sends) else None
         cid = act(engine.approve, v.opp.opportunity_id, selected, int(max_sends), window_end, channels, message,
-                  msg_source, scope=v.opp.opportunity_id,
+                  msg_source, first_wave_size=wave, scope=v.opp.opportunity_id,
                   success="Approved. Rally is sending only within that scope.")
         if cid:
             st.session_state["chat_campaign"] = cid
