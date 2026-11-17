@@ -172,7 +172,9 @@ class Coordinator:
                 self.storage.insert_invite(conn, invite_id=f"{cid}:{pid}", campaign_id=cid, player_id=pid, seq=seq,
                                            channel=profiles[pid].opt_in_channel)
             self.storage.log_event(
-                conn, sim_ts=now, actor=f"manager:{approval.approved_by}", tool="approve_campaign",
+                conn, sim_ts=now, tool="approve_campaign",
+                actor=(f"organiser:{approval.approved_by.removeprefix('organiser ')}"
+                       if approval.approved_by.startswith("organiser ") else f"manager:{approval.approved_by}"),
                 event_type="CAMPAIGN_APPROVED", policy_version=approval.policy_version, campaign_id=cid,
                 opportunity_id=approval.opportunity_id, from_state=S.AWAITING_APPROVAL.value,
                 to_state=S.APPROVED.value,
@@ -215,7 +217,7 @@ class Coordinator:
             return blocked("no current opt-in (consent re-checked at send time)", "player")
         if profile.opt_in_channel not in policy.consent.allowed_channels:
             return blocked(f"channel {profile.opt_in_channel} not allowed by policy", "player")
-        cap = policy.contact.max_invites_per_player_per_7_days
+        cap = profile.invite_cap(policy.contact.max_invites_per_player_per_7_days)
         if profile.invites_last_7d >= cap:
             return blocked(f"contact cap reached ({profile.invites_last_7d}/{cap} in 7 days)", "player")
         try:
@@ -293,7 +295,8 @@ class Coordinator:
         with self.storage.connect() as conn:
             self._transition(conn, campaign, S.INVITING, now, "sending the approved first wave")
         sent, last_block = 0, ""
-        for inv in [i for i in invites if i["status"] == IS.QUEUED.value][: approval.max_sends]:
+        wave = approval.first_wave_size or approval.max_sends
+        for inv in [i for i in invites if i["status"] == IS.QUEUED.value][:wave]:
             res = self.dispatch_invite(campaign_id, inv["player_id"], now)
             results.append(res)
             if res.sent:
@@ -596,9 +599,51 @@ class Coordinator:
         seats = self.policy_fn().club.players_per_court
         held = sum(1 for i in invites if i["status"] == IS.ACCEPTED.value)
         if held < seats and not any(i["status"] == IS.SENT.value for i in invites):
+            if self._send_backups(cid, seats - held, now):
+                return
+            campaign = self.storage.get_campaign(cid)
             with self.storage.connect() as conn:
                 self._transition(conn, campaign, S.ESCALATED, now,
                                  f"too few players confirmed ({held}/{seats}) and no replies pending; no booking")
+
+    def _send_backups(self, cid: str, needed: int, now: datetime) -> bool:
+        """Empty court (golden case G16): the first wave ran out without filling the court. Invite approved,
+        unsent backups in rank order to cover the open seats. Every send passes all dispatch_invite gates
+        again (approved list, max_sends, window, consent, contact cap, quiet hours, fresh provider check),
+        so this never goes beyond what was approved. Players who already said yes keep their seats.
+        Returns True if at least one backup invite went out."""
+        campaign = self.storage.get_campaign(cid)
+        queued = [i for i in self.storage.invites(cid) if i["status"] == IS.QUEUED.value]
+        if not queued:
+            return False
+        names = {pid: p.first_name for pid, p in self.profiles_fn(now).items()}
+        sent: list[str] = []
+        for inv in queued:
+            if len(sent) >= needed:
+                break
+            res = self.dispatch_invite(cid, inv["player_id"], now)
+            if res.sent:
+                sent.append(inv["player_id"])
+                continue
+            if res.level in ("player", "duplicate"):
+                with self.storage.connect() as conn:
+                    self.storage.update_invite(conn, inv["invite_id"], status=IS.NOT_SENT.value)
+                    self._event(conn, now, "INVITE_SKIPPED", campaign,
+                                detail={"player_id": inv["player_id"], "reason": res.reason})
+                continue
+            break  # campaign-level block (limit, window, provider): stop and let the caller escalate
+        if not sent:
+            return False
+        held = sum(1 for i in self.storage.invites(cid) if i["status"] == IS.ACCEPTED.value)
+        seats = self.policy_fn().club.players_per_court
+        with self.storage.connect() as conn:
+            self._event(conn, now, "BACKUP_WAVE_SENT", campaign,
+                        detail={"player_ids": sent, "seats_held": held, "seats_needed": needed,
+                                "note": "approved backups; no new approval needed"})
+            self.storage.update_campaign(conn, cid, now, state_reason=(
+                f"{held}/{seats} firm yes; first wave used up, so approved backups were invited: "
+                + ", ".join(names.get(p, p) for p in sent)))
+        return True
 
     # ---- time-based checks ----------------------------------------------------------------------
     @_guarded

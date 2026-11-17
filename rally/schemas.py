@@ -114,6 +114,11 @@ class PlayerProfile(BaseModel):
     last_played_days_ago: Optional[int] = None
     invites_last_7d: int = 0
     pending_invite_campaign: Optional[str] = None
+    # Personal weekly invite limit set in the player app; the effective cap is min(club cap, this).
+    max_invites_per_week: Optional[int] = None
+
+    def invite_cap(self, club_cap: int) -> int:
+        return min(club_cap, self.max_invites_per_week) if self.max_invites_per_week else club_cap
 
 
 class Opportunity(BaseModel):
@@ -131,6 +136,9 @@ class Opportunity(BaseModel):
     typical_occupancy_pct: Optional[float] = None
     free_courts_in_slot: Optional[int] = None
     reasons: list[str] = Field(default_factory=list)
+    # Set when a private match's organiser asked Rally to find a player (player app, Journey A).
+    organizer_id: Optional[str] = None
+    organizer_name: Optional[str] = None
     detected_at: datetime
     policy_version: str
 
@@ -184,6 +192,10 @@ class CampaignApproval(BaseModel):
     strategy: Literal["sequential", "batch"]
     approved_player_ids: list[str]
     max_sends: int
+    # Empty courts only: how many approved players get the first wave. The rest are approved
+    # backups, invited automatically (within max_sends) if the first wave cannot fill the court.
+    # None means the whole approved list goes in one wave (up to max_sends).
+    first_wave_size: Optional[int] = None
     channels: list[str]
     window_start: datetime
     window_end: datetime

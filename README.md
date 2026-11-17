@@ -21,6 +21,20 @@ streamlit run app.py
 Without a key the app still runs: simple keyword rules stand in for the LLM, and the UI says so
 everywhere. The PRD acceptance gate needs real LLM calls, so record the demo with a key.
 
+### Player app (the player-facing side)
+
+```bash
+uvicorn player_app.main:app --port 8600      # in a second terminal, from the repo root
+```
+
+Open http://localhost:8600 on a phone-sized window. It runs on the same engine and `runtime/` database as
+the dashboard, so approving an outreach on the dashboard puts an invite on that player's phone, and a
+player's reply or payment shows up on the dashboard and in the audit log. It covers four journeys:
+solo invite (yes / no / free text, then book and pay your share), organiser dropout ("find your own, or
+should we?", then choose who Rally may ask), empty-court group invite (counts, never names; booked only
+once all four pay), and opt-in / preferences (times, channel, personal weekly limit, invites off).
+Plan and rules: `docs/PLAYER_APP_ARCHITECTURE.md`. Tests: `tests/test_player_side.py`.
+
 Other entry points:
 
 ```bash

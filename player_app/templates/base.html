@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}Rally{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="phone">
+  <div class="demo-strip">Demo · fictional club and players · messages and payments are simulated ·
+    <a href="/">switch player</a> · <a href="{{ dashboard_url }}" target="_blank" rel="noopener">club dashboard ↗</a></div>
+  <header class="top">
+    <div class="brand"><span class="dot"></span>Rally</div>
+    {% if profile %}<div class="who"><b>{{ short_name }}</b>Level {{ profile.level|round(1) }} · {{ club }}</div>{% endif %}
+  </header>
+  <main>
+    {% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+    {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+    {% if provider_ok is defined and not provider_ok %}<div class="flash err">The club's booking system isn't answering right now. Nothing can be booked until it's back; you won't be charged.</div>{% endif %}
+    {% block main %}{% endblock %}
+  </main>
+  {% if pid %}
+  <nav class="tabs">
+    <a href="/p/{{ pid }}" class="{{ 'on' if tab == 'home' else '' }}"><span class="i">●</span>Games</a>
+    <a href="/p/{{ pid }}/settings" class="{{ 'on' if tab == 'settings' else '' }}"><span class="i">⚙︎</span>Settings</a>
+  </nav>
+  {% endif %}
+</div>
+{% if pid and version %}
+<script>
+  // Live updates: when the club approves an invite or something changes, reload (unless you're typing).
+  (function () {
+    var v = "{{ version }}", busy = false;
+    // While a tap is being processed (Rally may be asking Claude), don't reload and don't allow a double tap.
+    document.addEventListener("submit", function (ev) {
+      busy = true;
+      ev.target.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+      var btn = ev.submitter; if (btn) { btn.dataset.label = btn.textContent; btn.textContent = "One moment…"; }
+      if (btn && btn.name) { var h = document.createElement("input"); h.type = "hidden"; h.name = btn.name; h.value = btn.value; ev.target.appendChild(h); }
+    });
+    setInterval(function () {
+      if (busy) return;
+      var a = document.activeElement;
+      if (a && (a.tagName === "INPUT" || a.tagName === "SELECT") && a.value) return;
+      fetch("/api/p/{{ pid }}/version").then(function (r) { return r.json(); }).then(function (d) {
+        if (d.version !== v) location.replace(location.pathname);
+      }).catch(function () {});
+    }, 4000);
+  })();
+</script>
+{% endif %}
+</body>
+</html>

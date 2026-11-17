@@ -46,21 +46,26 @@ the manager dashboard used in the demo video.
 - **Model and cost comparison:** `scripts/tier_benchmark.py` (10 tasks × 3 runs × 4 models); prices
   in `data/model_pricing.yaml`.
 
-## Known open issues (found by the golden cases, not yet fixed)
+## Known open issues
 
-1. **Empty-court outreach does not move on to approved backups** (golden case G16). After two yes and
-   two no, Rally escalates to the manager instead of inviting the remaining approved players.
-   Safe, but a court can stay unsold.
-2. **Live invite drafts are often cut off** (G10, G14; `scripts/golden/check_draft_tokens.py`).
-   `claude-haiku-5-5` spends part of the 400-token output limit in `rally/llm.py` `_structured()` on
-   thinking, so 14 of 21 live drafts were truncated and Rally fell back to its fixed template (a safe
-   fallback). A 2,000-token limit fixed it in a separate check.
-3. **Empty-court template wording** says the first four YES replies "get the spots" without saying
-   the game depends on four players booking (G14).
-4. Minor, all safe: a send requested before approval raises an error instead of being logged (G08);
-   no retry limit while the provider is down (G12); no message IDs for deduplicating repeated
-   replies (G18); invites state a $30 price from `club_policy.yaml`, which the golden fixtures assume
-   is not supplied (G10, G14).
+Fixed on 2026-11-17 (player-app build; offline golden run now 13 pass, 6 partial, 1 fail, no forbidden action):
+
+1. ~~Empty-court outreach does not move on to approved backups (G16).~~ Fixed: an approval can set a first
+   wave (e.g. 4 of 6). If the wave can't fill the court, Rally invites the approved backups in rank order,
+   within max sends, keeping earlier yeses (`Coordinator._send_backups`, event `BACKUP_WAVE_SENT`). G16 passes.
+2. ~~Live invite drafts are often cut off (G10, G14).~~ Fixed: the Claude output limit in `rally/llm.py`
+   `_structured()` is now 2,000 tokens. A live check drafted complete invites.
+3. ~~Empty-court template wording (G14).~~ Fixed: the template and the drafting prompt now say the game is
+   on only once 4 players say yes and book. G14 is PARTIAL only for minor items (states the time range
+   rather than "90 minutes"; states the $30 policy price).
+
+Still open:
+
+4. G04 (offline parser only): the keyword backup parser leaves "7" blank instead of reading 7:00 PM;
+   live Claude reads it. Minor, all safe: a send requested before approval raises an error instead of
+   being logged (G08); no retry limit while the provider is down (G12); no message IDs for deduplicating
+   repeated replies (G18); invites state a $30 price from `club_policy.yaml` (G10, G14).
+5. The live golden run (`--live`) and the cross-model judge have not been re-run since these fixes.
 
 A conditional yes ("I'm in if Daniela is playing") was once parsed as a firm yes by the offline
 parser. That is fixed and covered by a regression test and golden case G09.

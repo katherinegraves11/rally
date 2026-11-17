@@ -102,6 +102,30 @@ CREATE TABLE IF NOT EXISTS consent_overrides (
 
 CREATE TABLE IF NOT EXISTS prior_invites (player_id TEXT NOT NULL, sent_at TEXT NOT NULL);
 
+-- Player side (docs/PLAYER_APP_ARCHITECTURE.md). Current values only; every change is also an event.
+CREATE TABLE IF NOT EXISTS player_settings (
+    player_id TEXT PRIMARY KEY,
+    preferred_bands TEXT,            -- ';'-joined time bands, NULL = keep roster value
+    opt_in_channel TEXT,
+    max_invites_per_week INTEGER,    -- personal limit, never above the club cap
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS organizer_authorizations (
+    match_id TEXT PRIMARY KEY,
+    organizer_id TEXT NOT NULL,
+    mode TEXT NOT NULL,              -- 'rally' = find someone for me, 'self' = I'll find someone
+    decided_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS player_payments (
+    campaign_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    paid_at TEXT NOT NULL,
+    amount_usd REAL NOT NULL,
+    PRIMARY KEY (campaign_id, player_id)
+);
+
 CREATE TABLE IF NOT EXISTS drafts (
     opportunity_id TEXT PRIMARY KEY,
     template TEXT NOT NULL,
@@ -344,6 +368,39 @@ class Storage:
     def consent_overrides(self) -> dict[str, dict]:
         with self.connect() as conn:
             return {r["player_id"]: dict(r) for r in conn.execute("SELECT * FROM consent_overrides").fetchall()}
+
+    # ---- player side --------------------------------------------------------------------------
+    def player_settings(self) -> dict[str, dict]:
+        with self.connect() as conn:
+            return {r["player_id"]: dict(r) for r in conn.execute("SELECT * FROM player_settings").fetchall()}
+
+    def set_player_settings(self, conn: sqlite3.Connection, player_id: str, now: datetime, *,
+                            preferred_bands: Optional[str], opt_in_channel: Optional[str],
+                            max_invites_per_week: Optional[int]) -> None:
+        conn.execute("INSERT INTO player_settings VALUES (?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET "
+                     "preferred_bands = excluded.preferred_bands, opt_in_channel = excluded.opt_in_channel, "
+                     "max_invites_per_week = excluded.max_invites_per_week, updated_at = excluded.updated_at",
+                     (player_id, preferred_bands, opt_in_channel, max_invites_per_week, _iso(now)))
+
+    def organizer_authorizations(self) -> dict[str, dict]:
+        with self.connect() as conn:
+            return {r["match_id"]: dict(r) for r in
+                    conn.execute("SELECT * FROM organizer_authorizations").fetchall()}
+
+    def set_organizer_decision(self, conn: sqlite3.Connection, match_id: str, organizer_id: str, mode: str,
+                               now: datetime) -> None:
+        conn.execute("INSERT INTO organizer_authorizations VALUES (?,?,?,?) ON CONFLICT(match_id) DO UPDATE SET "
+                     "mode = excluded.mode, decided_at = excluded.decided_at",
+                     (match_id, organizer_id, mode, _iso(now)))
+
+    def payments(self, campaign_id: str) -> dict[str, dict]:
+        with self.connect() as conn:
+            return {r["player_id"]: dict(r) for r in
+                    conn.execute("SELECT * FROM player_payments WHERE campaign_id = ?", (campaign_id,)).fetchall()}
+
+    def record_payment(self, conn: sqlite3.Connection, campaign_id: str, player_id: str, amount: float,
+                       now: datetime) -> None:
+        conn.execute("INSERT INTO player_payments VALUES (?,?,?,?)", (campaign_id, player_id, _iso(now), amount))
 
     def seed_prior_invites(self, rows: list[tuple[str, datetime]]) -> None:
         with self.connect() as conn:

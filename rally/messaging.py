@@ -38,8 +38,9 @@ def invite_facts(opp: Opportunity, policy: ClubPolicy, now: datetime, group_leve
         "time": range_label(opp.start, opp.end),
         "level": level_text,
         "seats": opp.seats_needed,
-        "game_type": "open match with one spot left" if opp.type == OpportunityType.MISSING_PLAYER
-                     else "new game for four",
+        "game_type": (f"{opp.organizer_name}'s game, one spot left" if opp.organizer_name
+                      else "open match with one spot left") if opp.type == OpportunityType.MISSING_PLAYER
+                     else "new game for four (goes ahead only once 4 players say yes and book)",
         "price_per_player_usd": price_per_player(policy),
         "reply_options": "YES to join, NO to pass",
         "opt_out_line": "Reply STOP to opt out.",
@@ -48,12 +49,13 @@ def invite_facts(opp: Opportunity, policy: ClubPolicy, now: datetime, group_leve
 
 def template_invite(opp: Opportunity, facts: dict) -> str:
     if opp.type == OpportunityType.MISSING_PLAYER:
-        return (f"Hi {{first_name}}, it's {facts['club']}. Our open match {facts['when']} on {facts['court']} "
+        game = f"{opp.organizer_name}'s game" if opp.organizer_name else "Our open match"
+        return (f"Hi {{first_name}}, it's {facts['club']}. {game} {facts['when']} on {facts['court']} "
                 f"(level {facts['level']}) has 1 spot left. Want it? Reply YES to join or NO to pass. "
                 f"${facts['price_per_player_usd']}/player. Reply STOP to opt out.")
     return (f"Hi {{first_name}}, it's {facts['club']}. We're putting together a level {facts['level']} game "
-            f"{facts['when']} on {facts['court']}. The first 4 to reply YES get the spots, "
-            f"${facts['price_per_player_usd']}/player. Reply NO to pass. Reply STOP to opt out.")
+            f"{facts['when']} on {facts['court']}, ${facts['price_per_player_usd']}/player. It's on once 4 players "
+            f"say YES and book. Reply YES to join, NO to pass. Reply STOP to opt out.")
 
 
 def validate_invite_text(text: str, facts: dict) -> list[str]:

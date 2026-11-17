@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Rally · settings{% endblock %}
+{% block main %}
+<div class="hello">
+  <h1>Settings</h1>
+  <p>What Rally may message you about.</p>
+</div>
+
+<div class="card {{ '' if s.opted_in else 'hero' }}">
+  <div class="eyebrow">GAME INVITES</div>
+  {% if s.opted_in %}
+  <div class="big">On</div>
+  <div class="meta">You'll get a message when a game at level {{ s.level }} (give or take a little) needs a player at a time you play.</div>
+  <form method="post" action="/p/{{ pid }}/opt" class="btns"><input type="hidden" name="on" value="0">
+    <button class="btn ghost">Turn off invites</button></form>
+  <div class="hint">Replying STOP to any message does the same.</div>
+  {% else %}
+  <div class="big">{{ 'Off' if s.status == 'opted_out' else 'Not signed up' }}</div>
+  <div class="meta">Turn on to hear about games that need a player at your level. You choose when and how often.</div>
+  <form method="post" action="/p/{{ pid }}/opt" class="btns"><input type="hidden" name="on" value="1">
+    <button class="btn primary">Turn on invites</button></form>
+  {% endif %}
+</div>
+
+<form method="post" action="/p/{{ pid }}/settings">
+  <div class="section-title">When you play</div>
+  <div class="list">
+    {% for b in s.bands %}
+    <label class="check"><input type="checkbox" name="band" value="{{ b.key }}" {{ 'checked' if b.on else '' }}>{{ b.label[0]|upper }}{{ b.label[1:] }}</label>
+    {% endfor %}
+  </div>
+  <p class="small-print" style="margin-top:8px">Games at these times come first. You can still be asked about other times if you're a strong fit.</p>
+
+  <div class="section-title">How to reach you</div>
+  <div class="list">
+    {% for c in s.channels %}
+    <label class="check"><input type="radio" name="channel" value="{{ c.key }}" {{ 'checked' if c.on else '' }}>{{ c.label }}</label>
+    {% endfor %}
+  </div>
+
+  <div class="section-title">How often</div>
+  <div class="card">
+    <select name="max_per_week">
+      {% for n in s.cap_options %}<option value="{{ n }}" {{ 'selected' if n == s.my_cap else '' }}>At most {{ n }} invite{{ 's' if n > 1 else '' }} a week</option>{% endfor %}
+    </select>
+    <div class="hint">You've had {{ s.invites_last_7d }} in the last 7 days. The club never sends more than {{ s.club_cap }}.</div>
+  </div>
+
+  <div class="btns"><button class="btn dark">Save</button></div>
+</form>
+
+<p class="small-print">Your level ({{ s.level }}) comes from the club's booking app. Other players only ever see your first name, last initial and level, and only when you're invited to the same game.</p>
+{% endblock %}

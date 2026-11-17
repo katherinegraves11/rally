@@ -50,6 +50,9 @@ Rules:
 - Say how to reply: YES to join, NO to pass.
 - End with the exact sentence: Reply STOP to opt out.
 - You may mention the price only as given (price_per_player_usd, per player). No other numbers or promises.
+- For a new game for four, say plainly that it only goes ahead once 4 players say yes and book; never
+  promise anyone a spot.
+- Describe the game exactly as "game_type" does; never name other players.
 - No links, no emojis, no new facts. At most 300 characters. Warm and plain."""
 
 _YES = re.compile(r"\b(yes|yep|yeah|yea|yup|sure|definitely|absolutely|sounds good|count me in|i'?m in|im in|"
@@ -171,7 +174,9 @@ class LLMService:
             if parsed is None:
                 raise ValueError(f"no parsed output (status={getattr(resp, 'status', None)})")
             return parsed, resp.usage.input_tokens, resp.usage.output_tokens
-        resp = self._anthropic().messages.parse(model=self.model, max_tokens=400, system=system,
+        # 2,000 tokens: at 400, claude-haiku-5-5 spent part of the budget thinking and 14 of 21 live drafts
+        # were cut off (golden cases G10/G14; scripts/golden/check_draft_tokens.py).
+        resp = self._anthropic().messages.parse(model=self.model, max_tokens=2000, system=system,
                                                 messages=[{"role": "user", "content": user}], output_format=schema)
         if resp.stop_reason == "refusal" or resp.parsed_output is None:
             raise ValueError(f"no parsed output (stop_reason={resp.stop_reason})")

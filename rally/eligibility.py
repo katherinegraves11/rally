@@ -50,8 +50,9 @@ def filter_eligible(opp: Opportunity, profiles: list[PlayerProfile], snapshot: S
             reason = ("OPTED_OUT", "Opted out of Rally messages (STOP)")
         elif p.opt_in_channel not in policy.consent.allowed_channels:
             reason = ("CHANNEL_NOT_ALLOWED", f"Opt-in channel {p.opt_in_channel!r} is not allowed by policy")
-        elif p.invites_last_7d >= cap:
-            reason = ("CONTACT_CAP", f"Already invited {p.invites_last_7d}x in the last 7 days (cap {cap})")
+        elif p.invites_last_7d >= p.invite_cap(cap):
+            reason = ("CONTACT_CAP", f"Already invited {p.invites_last_7d}x in the last 7 days "
+                                     f"(cap {p.invite_cap(cap)}{' set by the player' if p.invite_cap(cap) < cap else ''})")
         elif policy.eligibility.exclude_if_pending_invite_elsewhere and p.pending_invite_campaign:
             reason = ("PENDING_INVITE", f"Has an unanswered invite in {p.pending_invite_campaign}")
         elif p.player_id in busy:

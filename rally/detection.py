@@ -20,7 +20,11 @@ def _overlaps(a_start: datetime, a_end: datetime, b_start: datetime, b_end: date
 
 
 def detect_opportunities(snapshot: Snapshot, profile: OccupancyProfile, policy: ClubPolicy,
-                         now: datetime) -> tuple[list[Opportunity], list[NotActionable]]:
+                         now: datetime, authorized: dict[str, tuple[str, str]] | None = None
+                         ) -> tuple[list[Opportunity], list[NotActionable]]:
+    """`authorized` maps private match IDs to (organiser ID, organiser name) for the organiser who asked Rally to find a
+    player ("find someone for me" in the player app). Only those private matches become actionable."""
+    authorized = authorized or {}
     horizon_end = now + timedelta(hours=policy.timing.detection_horizon_hours)
     min_lead = timedelta(minutes=policy.timing.min_lead_time_minutes)
     courts = {c.court_id: c for c in snapshot.courts}
@@ -34,7 +38,9 @@ def detect_opportunities(snapshot: Snapshot, profile: OccupancyProfile, policy: 
         court_name = courts[match.court_id].name
         label = f"{court_name} · {day_label(match.start)} {range_label(match.start, match.end)}"
         seats = match.open_seats
-        if match.kind not in policy.eligibility.match_types_allowed:
+        org = authorized.get(match.match_id) if match.kind == "private" else None
+        organiser = org[1] if org else None
+        if match.kind not in policy.eligibility.match_types_allowed and not organiser:
             skipped.append(NotActionable(
                 ref=match.match_id, label=label, reason_code="PRIVATE_MATCH_EXCLUDED",
                 detail=f"Private match with {seats} open seat(s). Rally only helps with club-managed open matches "
@@ -47,8 +53,12 @@ def detect_opportunities(snapshot: Snapshot, profile: OccupancyProfile, policy: 
                 detail=f"Starts in {duration_label(lead)}, under the {policy.timing.min_lead_time_minutes}-minute "
                        "minimum lead time. Front desk should handle it by hand."))
             continue
-        reasons = [f"Club-managed open match (level {level_label(match.level)}) with "
-                   f"{len(match.player_ids)}/{match.capacity} players"]
+        if organiser:
+            reasons = [f"Private match (level {level_label(match.level)}) with {len(match.player_ids)}/"
+                       f"{match.capacity} players; organiser {organiser} asked Rally to find a player"]
+        else:
+            reasons = [f"Club-managed open match (level {level_label(match.level)}) with "
+                       f"{len(match.player_ids)}/{match.capacity} players"]
         if match.note:
             reasons.append(match.note)
         reasons.append(f"Starts in {duration_label(lead)} (minimum lead time {policy.timing.min_lead_time_minutes} min)")
@@ -57,6 +67,7 @@ def detect_opportunities(snapshot: Snapshot, profile: OccupancyProfile, policy: 
             court_name=court_name, start=match.start, end=match.end, seats_needed=seats, level_target=match.level,
             match_id=match.match_id, present_player_ids=list(match.player_ids),
             dropout_player_ids=list(match.dropout_player_ids), reasons=reasons, detected_at=now,
+            organizer_id=org[0] if org else None, organizer_name=organiser,
             policy_version=policy.policy_version))
 
     # ---- Problem B: empty courts in off-peak slots -------------------------------------------

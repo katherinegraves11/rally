@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Rally · choose a player{% endblock %}
+{% block main %}
+<div class="hello">
+  <h1>Who's playing?</h1>
+  <p>Pick a fictional player to see Rally from their phone. In a real club this is the player's own sign-in.</p>
+</div>
+
+{% macro person(r, note) %}
+<a class="row" href="/p/{{ r.player_id }}">
+  <span class="avatar">{{ r.first_name[0] }}</span>
+  <span class="grow"><span class="name">{{ r.name }}</span><br><span class="sub">Level {{ r.level }}{% if note %} · {{ note }}{% endif %}</span></span>
+  {% if r.active_invites %}<span class="pill lime">{{ r.active_invites }} invite{{ 's' if r.active_invites > 1 else '' }}</span>
+  {% elif r.opt_in == 'opted_out' %}<span class="pill grey">invites off</span>
+  {% elif r.opt_in == 'none' %}<span class="pill grey">not signed up</span>{% endif %}
+</a>
+{% endmacro %}
+
+{% if invited %}
+<div class="section-title">Has an invite now</div>
+<div class="list">{% for r in invited %}{{ person(r, "") }}{% endfor %}</div>
+{% else %}
+<div class="card"><div class="eyebrow">Tip</div>
+  Nobody has an invite yet. Approve an outreach on the <a href="{{ dashboard_url }}" target="_blank" rel="noopener">club dashboard</a>, and the invited players show up here.</div>
+{% endif %}
+
+<div class="section-title">Organisers</div>
+<div class="list">{% for r in organisers %}{{ person(r, "organises a private game") }}{% endfor %}</div>
+
+<div class="section-title">Everyone ({{ everyone|length }})</div>
+<div class="list">{% for r in everyone %}{{ person(r, "") }}{% endfor %}</div>
+<p class="small-print">Reply reading: {{ parser }}. Every reply goes through the same reader and rules as the club dashboard.</p>
+{% endblock %}

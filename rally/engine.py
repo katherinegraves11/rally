@@ -32,6 +32,12 @@ from .storage import Storage
 __all__ = ["RallyEngine", "OpportunityView", "ApprovalError"]
 
 
+def short_name(full: str) -> str:
+    """'Elif Yilmaz' -> 'Elif Y.': what other players see of someone (player app privacy rule)."""
+    parts = full.split()
+    return f"{parts[0]} {parts[-1][0]}." if len(parts) > 1 else full
+
+
 def _split(value: str | None) -> list[str]:
     return [v for v in (value or "").split(";") if v]
 
@@ -74,6 +80,7 @@ class RallyEngine:
         self.coordinator = Coordinator(self.storage, self.provider, self.messaging, self.llm, self.policy,
                                        self.profiles, self.opportunity)
         self._players = self._load_players()
+        self._organizers = self._load_organizers()
         self._snapshot: Snapshot | None = None
         self._skipped: list[NotActionable] = []
         self._seed()
@@ -85,6 +92,20 @@ class RallyEngine:
             for r in csv.DictReader(f):
                 players[r["player_id"]].update(r)
         return players
+
+    def _load_organizers(self) -> dict[str, str]:
+        """match_id -> organiser player_id for private matches (fictional, data/match_organizers.csv)."""
+        path = self.data_dir / "match_organizers.csv"
+        if not path.exists():
+            return {}
+        with open(path, newline="", encoding="utf-8") as f:
+            return {r["match_id"]: r["organizer_id"] for r in csv.DictReader(f)}
+
+    def organizer_of(self, match_id: str) -> str | None:
+        return self._organizers.get(match_id)
+
+    def organized_by(self, player_id: str) -> list[str]:
+        return [m for m, p in self._organizers.items() if p == player_id]
 
     def _seed(self) -> None:
         if self.storage.get_meta("sim_now"):
@@ -136,6 +157,7 @@ class RallyEngine:
     def profiles(self, now: datetime | None = None) -> dict[str, PlayerProfile]:
         now = now or self.now()
         overrides = self.storage.consent_overrides()
+        settings = self.storage.player_settings()
         times = self.storage.invite_times()
         pending: dict[str, str] = {}
         for c in self.storage.campaigns():
@@ -148,14 +170,21 @@ class RallyEngine:
         out = {}
         for pid, r in self._players.items():
             status = overrides[pid]["opt_in_status"] if pid in overrides else r["opt_in_status"]
+            s = settings.get(pid, {})
+            channel = s.get("opt_in_channel") or r["opt_in_channel"] or None
+            bands = _split(s["preferred_bands"]) if s.get("preferred_bands") is not None else _split(
+                r.get("preferred_bands"))
+            source, at = r["opt_in_source"] or None, r["opt_in_at"] or None
+            if pid in overrides and overrides[pid]["opt_in_status"] == "opted_in":
+                source, at = overrides[pid]["source"], overrides[pid]["changed_at"][:10]
             recent = [t for t in times.get(pid, []) if now - timedelta(days=7) < t <= now]
             out[pid] = PlayerProfile(
                 player_id=pid, name=r["name"], first_name=r["first_name"], level=float(r["level"]), phone=r["phone"],
-                opt_in_status=status, opt_in_channel=r["opt_in_channel"] or None,
-                opt_in_source=r["opt_in_source"] or None, opt_in_at=r["opt_in_at"] or None,
-                preferred_bands=_split(r.get("preferred_bands")), played_with=_split(r.get("played_with")),
+                opt_in_status=status, opt_in_channel=channel, opt_in_source=source, opt_in_at=at,
+                preferred_bands=bands, played_with=_split(r.get("played_with")),
                 last_played_days_ago=int(r["last_played_days_ago"]) if r.get("last_played_days_ago") else None,
-                invites_last_7d=len(recent), pending_invite_campaign=pending.get(pid))
+                invites_last_7d=len(recent), pending_invite_campaign=pending.get(pid),
+                max_invites_per_week=s.get("max_invites_per_week"))
         return out
 
     def opportunity(self, opp_id: str) -> Opportunity:
@@ -183,7 +212,10 @@ class RallyEngine:
         if snap is None:
             return status
         self._snapshot = snap
-        opps, self._skipped = detect_opportunities(snap, self.occupancy, policy, now)
+        names = {pid: short_name(r["name"]) for pid, r in self._players.items()}
+        authorized = {m: (a["organizer_id"], names.get(a["organizer_id"], a["organizer_id"]))
+                      for m, a in self.storage.organizer_authorizations().items() if a["mode"] == "rally"}
+        opps, self._skipped = detect_opportunities(snap, self.occupancy, policy, now, authorized)
         existing = {row["opportunity_id"]: row for row in self.storage.opportunities()}
         live = {c["opportunity_id"] for c in self.storage.campaigns() if State(c["state"]) not in TERMINAL_STATES}
         new_opps = []
@@ -300,7 +332,8 @@ class RallyEngine:
         return text, source, facts
 
     def approve(self, opp_id: str, selected_ids: list[str], max_sends: int, window_end: datetime,
-                channels: list[str], template: str, source: str) -> str:
+                channels: list[str], template: str, source: str, first_wave_size: int | None = None,
+                approver: str | None = None) -> str:
         if self.provider.health() != "ok":
             raise ApprovalError("Provider unavailable: approvals are blocked until a fresh snapshot is available.")
         now, policy = self.now(), self.policy()
@@ -309,8 +342,9 @@ class RallyEngine:
         facts = invite_facts(opp, policy, now, shortlist.group_level)
         approval = approve_campaign(
             opp=opp, shortlist=shortlist, selected_ids=selected_ids, max_sends=max_sends, window_end=window_end,
-            channels=channels, message_template=template, message_source=source, facts=facts, manager=self.MANAGER,
-            policy=policy, now=now, attempt=len(self.storage.campaigns(opp_id)) + 1)
+            channels=channels, message_template=template, message_source=source, facts=facts,
+            manager=approver or self.MANAGER, policy=policy, now=now, attempt=len(self.storage.campaigns(opp_id)) + 1,
+            first_wave_size=first_wave_size)
         cid = self.coordinator.start_campaign(approval, now)
         self.refresh()
         return cid

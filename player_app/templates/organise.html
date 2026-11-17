@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Rally · choose players{% endblock %}
+{% block main %}
+<p><a href="/p/{{ pid }}" class="muted">← Back</a></p>
+<div class="card hero">
+  <div class="eyebrow">YOUR GAME · {{ card.court }}</div>
+  <div class="big">{{ card.when }}</div>
+  <div class="meta">Level {{ card.level }} · {{ card.players_in }} of {{ card.capacity }} players</div>
+  <div class="seats">{% for i in range(card.capacity) %}<span class="seat {{ 'on' if i < card.players_in else '' }}"></span>{% endfor %}</div>
+</div>
+
+{% if card.stage != 'choose' %}
+<div class="card"><div class="status off"><b>{{ card.headline }}</b>{{ card.detail }}</div></div>
+{% elif not candidates %}
+<div class="card empty"><div class="big">Nobody fits right now</div>No opted-in player at your game's level is free then. The club has been told.</div>
+{% else %}
+<div class="section-title">Who may Rally ask?</div>
+<p class="muted" style="margin:-4px 4px 12px">Players who fit your level and are free then, best fit first. Rally asks them one at a time, in this order, and stops as soon as one books.</p>
+<form method="post" action="/p/{{ pid }}/organise/{{ card.match_id }}/approve">
+  <div class="list">
+    {% for c in candidates %}
+    <label class="cand">
+      <input type="checkbox" name="player" value="{{ c.player_id }}" {{ 'checked' if c.suggested else '' }}>
+      <span class="avatar">{{ c.name[0] }}</span>
+      <span class="grow">
+        <span class="name">{{ c.name }}</span> <span class="pill grey">Level {{ c.level }}</span>
+        <ul>{% for h in c.history %}<li>{{ h }}</li>{% endfor %}</ul>
+      </span>
+    </label>
+    {% endfor %}
+  </div>
+  <div class="btns"><button class="btn dark">Ask these players</button></div>
+  <p class="small-print">They get one message from the club with the game's time, court, level and price, and can reply STOP at any time. You'll see each answer here.</p>
+</form>
+{% endif %}
+{% endblock %}

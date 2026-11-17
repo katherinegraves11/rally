@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Rally · {{ short_name }}{% endblock %}
+{% block main %}
+<div class="hello">
+  <h1>Hi {{ profile.first_name }}</h1>
+  <p>{{ now_label }} · {% if profile.opt_in_status == 'opted_in' %}invites on{% else %}invites off · <a href="/p/{{ pid }}/settings">turn on</a>{% endif %}</p>
+</div>
+
+{# ---- Organiser: Journey A ---- #}
+{% for o in organiser_cards %}
+<div class="card {{ 'hero' if o.stage in ('ask', 'choose') else '' }}">
+  <div class="eyebrow">YOUR GAME · {{ o.court }}</div>
+  <div class="big">{{ o.when }}</div>
+  <div class="meta">Level {{ o.level }} · {{ o.players_in }} of {{ o.capacity }} players</div>
+  <div class="seats">{% for i in range(o.capacity) %}<span class="seat {{ 'on' if i < o.players_in else '' }}"></span>{% endfor %}</div>
+  <div class="status {{ 'ok' if o.stage == 'done' else 'wait' if o.stage in ('running',) else 'off' }}">
+    <b>{{ o.headline }}</b>{{ o.detail }}
+  </div>
+  {% if o.stage == 'ask' or o.stage == 'self' %}
+  <form method="post" action="/p/{{ pid }}/organise/{{ o.match_id }}/decide" class="btns">
+    {% if o.stage == 'ask' %}<button class="btn ghost" name="mode" value="self">I'll find someone</button>{% endif %}
+    <button class="btn primary" name="mode" value="rally">Find someone for me</button>
+  </form>
+  {% if o.stage == 'ask' %}<div class="hint">If Rally helps, you choose exactly who it may ask. Nobody is messaged before that.</div>{% endif %}
+  {% elif o.stage == 'choose' %}
+  <div class="btns"><a class="btn primary" href="/p/{{ pid }}/organise/{{ o.match_id }}">Choose players</a></div>
+  {% endif %}
+  {% if o.asked %}
+  <div class="asked">{% for a in o.asked %}<div class="r"><span>{{ a.name }}</span><span class="muted">{{ a.status }}</span></div>{% endfor %}</div>
+  {% endif %}
+</div>
+{% endfor %}
+
+{# ---- Invites: Journeys B and D ---- #}
+{% if open_cards %}<div class="section-title">Invites</div>{% endif %}
+{% for c in open_cards %}
+<div class="card {{ 'hero' if c.status in ('invited', 'pay') else '' }}">
+  <div class="eyebrow">{{ c.title|upper }}</div>
+  <div class="big">{{ c.when }}</div>
+  <div class="meta">{{ c.court }} · {{ club }}</div>
+  <div class="facts">
+    <div class="fact"><div class="k">Level</div><div class="v">{{ c.level }}</div></div>
+    <div class="fact"><div class="k">Your share</div><div class="v">${{ c.price }}</div></div>
+    <div class="fact"><div class="k">Length</div><div class="v">90 min</div></div>
+  </div>
+  {% if c.kind == 'new_game' %}
+  <div class="seats">{% for i in range(c.seats_total) %}<span class="seat {{ 'on' if i < c.seats_held else '' }}"></span>{% endfor %}</div>
+  <div class="hint">{{ c.seats_held }} of {{ c.seats_total }} players in so far</div>
+  {% endif %}
+  <div class="status {{ 'ok' if c.status in ('booked',) else 'wait' if c.status in ('waiting_group', 'paid_waiting', 'checking', 'with_club') else 'off' }}">
+    <b>{{ c.headline }}</b>{{ c.detail }}{% if c.reply_by %} Reply by {{ c.reply_by }}.{% endif %}
+  </div>
+
+  {% if c.can_pay %}
+  <form method="post" action="/p/{{ pid }}/pay/{{ c.invite_id }}" class="btns">
+    <button class="btn primary">Book and pay ${{ c.price }}</button>
+  </form>
+  <div class="hint">Simulated Playtomic checkout. No real card is charged.</div>
+  {% endif %}
+
+  {% if c.can_reply %}
+  <div class="btns">
+    <form method="post" action="/p/{{ pid }}/reply/{{ c.invite_id }}" style="flex:1;display:flex">
+      <input type="hidden" name="text" value="{{ quick.yes }}"><button class="btn primary">I'm in</button></form>
+    <form method="post" action="/p/{{ pid }}/reply/{{ c.invite_id }}" style="flex:1;display:flex">
+      <input type="hidden" name="text" value="{{ quick.no }}"><button class="btn ghost">Can't make it</button></form>
+  </div>
+  <form method="post" action="/p/{{ pid }}/reply/{{ c.invite_id }}" class="reply">
+    <input name="text" placeholder="Or write a reply, e.g. who else is playing?" maxlength="500" autocomplete="off">
+    <button class="btn small {{ 'primary' if c.status == 'invited' else 'dark' }}">Send</button>
+  </form>
+  <div class="hint">Rally reads your reply. Anything unclear goes to a person at the club, never to an automatic booking.</div>
+  {% endif %}
+
+  {% if c.thread %}
+  <details class="thread"><summary>Messages ({{ c.thread|length }})</summary>
+    <div class="bubbles">{% for m in c.thread %}<div class="bubble {{ m.dir }}">{{ m.body }}<span class="ts">{{ m.ts }}</span></div>{% endfor %}</div>
+  </details>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% if not open_cards and not organiser_cards %}
+<div class="card empty">
+  <div class="big">No invites right now</div>
+  {% if profile.opt_in_status == 'opted_in' %}
+  Rally messages you only when a game at your level and time needs a player, and never more often than your weekly limit in Settings.
+  {% else %}
+  Turn invites on in <a href="/p/{{ pid }}/settings">Settings</a> to hear about games that need a player at your level.
+  {% endif %}
+</div>
+{% endif %}
+
+{% if games %}
+<div class="section-title">Your games</div>
+<div class="list">
+  {% for g in games %}
+  <div class="row"><span class="avatar" style="background:var(--ball);color:var(--ball-ink)">{{ g.court[-1] }}</span>
+    <span class="grow"><span class="name">{{ g.when }}</span><br><span class="sub">{{ g.court }} · {{ g.players }} players{% if g.organiser %} · you organise{% endif %}</span></span>
+    {% if g.via_rally %}<span class="pill green">via Rally</span>{% endif %}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if past_cards %}
+<div class="section-title">Earlier</div>
+{% for c in past_cards %}
+<div class="card">
+  <div class="eyebrow">{{ c.title|upper }}</div>
+  <div style="font-weight:800">{{ c.when }} · {{ c.court }}</div>
+  <div class="status {{ 'ok' if c.status == 'booked' else 'off' }}"><b>{{ c.headline }}</b>{{ c.detail }}</div>
+  {% if c.thread %}
+  <details class="thread"><summary>Messages ({{ c.thread|length }})</summary>
+    <div class="bubbles">{% for m in c.thread %}<div class="bubble {{ m.dir }}">{{ m.body }}<span class="ts">{{ m.ts }}</span></div>{% endfor %}</div>
+  </details>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}
