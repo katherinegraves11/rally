@@ -127,6 +127,20 @@ CREATE TABLE IF NOT EXISTS player_availability (
     status TEXT NOT NULL             -- active | cancelled | joined
 );
 
+CREATE TABLE IF NOT EXISTS join_requests (
+    request_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,         -- match_id (open match / organiser game) or EC opportunity_id
+    kind TEXT NOT NULL,              -- open_match | organiser | empty_court
+    note TEXT,
+    status TEXT NOT NULL,            -- pending | approved | declined | acknowledged | booked | withdrawn
+    created_at TEXT NOT NULL,
+    decided_at TEXT,
+    decided_by TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_open_request ON join_requests(player_id, target_id)
+    WHERE status IN ('pending', 'approved', 'acknowledged');
+
 CREATE TABLE IF NOT EXISTS player_payments (
     campaign_id TEXT NOT NULL,
     player_id TEXT NOT NULL,
@@ -423,6 +437,36 @@ class Storage:
         for r in rows:
             r["start"], r["end"] = datetime.fromisoformat(r["start"]), datetime.fromisoformat(r["end"])
         return rows
+
+    def add_request(self, conn: sqlite3.Connection, player_id: str, target_id: str, kind: str, note: str,
+                    now: datetime) -> int:
+        cur = conn.execute("INSERT INTO join_requests (player_id, target_id, kind, note, status, created_at) "
+                           "VALUES (?,?,?,?, 'pending', ?)", (player_id, target_id, kind, note, _iso(now)))
+        return int(cur.lastrowid)
+
+    def set_request(self, conn: sqlite3.Connection, request_id: int, status: str, now: datetime,
+                    decided_by: str | None = None) -> None:
+        if decided_by:
+            conn.execute("UPDATE join_requests SET status = ?, decided_at = ?, decided_by = ? WHERE request_id = ?",
+                         (status, _iso(now), decided_by, request_id))
+        else:
+            conn.execute("UPDATE join_requests SET status = ? WHERE request_id = ?", (status, request_id))
+
+    def requests(self, player_id: str | None = None, target_id: str | None = None) -> list[dict]:
+        sql, args, where = "SELECT * FROM join_requests", [], []
+        if player_id:
+            where.append("player_id = ?"); args.append(player_id)
+        if target_id:
+            where.append("target_id = ?"); args.append(target_id)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        with self.connect() as conn:
+            return [dict(r) for r in conn.execute(sql + " ORDER BY request_id", args).fetchall()]
+
+    def get_request(self, request_id: int) -> Optional[dict]:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM join_requests WHERE request_id = ?", (request_id,)).fetchone()
+        return dict(row) if row else None
 
     def payments(self, campaign_id: str) -> dict[str, dict]:
         with self.connect() as conn:

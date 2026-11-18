@@ -31,6 +31,7 @@ from rally.engine import OpportunityView, RallyEngine
 from rally.fmt import day_label, duration_label, range_label, time_label
 from rally.llm import KNOWN_MODELS
 from rally.messaging import render, validate_invite_text
+from rally.player_side import PlayerError, PlayerSide
 from rally.occupancy import WEEKDAY_NAMES
 from rally.schemas import TERMINAL_STATES, OpportunityType, State
 
@@ -74,6 +75,7 @@ def get_engine() -> RallyEngine:
 
 
 engine = get_engine()
+side = PlayerSide(engine)
 
 STATE_STYLE = {
     State.DETECTED: ("gray", "🔎"), State.AWAITING_APPROVAL: ("violet", "✋"), State.APPROVED: ("blue", "✔️"),
@@ -244,7 +246,9 @@ def _events_since(start) -> list[dict]:
 
 
 def _self_joins(events: list[dict]) -> int:
-    return sum(1 for e in events if e["event_type"] == "PLAYER_SELF_JOINED")
+    """Players who joined on their own initiative: from "I'm free", or an approved "ask about this game"."""
+    return sum(1 for e in events if e["event_type"] in ("PLAYER_SELF_JOINED", "PLAYER_REQUEST_BOOKED")
+               and e["detail"].get("verified", True))
 
 
 def free_for(v: OpportunityView) -> int:
@@ -277,6 +281,7 @@ def header(status: str, mp_views: list[OpportunityView], ec_views: list[Opportun
 
     views = mp_views + ec_views
     need = [v for v in views if v.state in NEEDS_YOU]
+    open_requests = [r for r in side.pending_requests() if r["status"] == "pending"]
     working = [v for v in views if v.campaign is not None and v.state not in TERMINAL_STATES and v.state not in NEEDS_YOU]
     today = _events_since(now.replace(hour=0, minute=0, second=0, microsecond=0))
     filled = _confirmed_by_type(today)
@@ -286,12 +291,14 @@ def header(status: str, mp_views: list[OpportunityView], ec_views: list[Opportun
                      for v in views if v.state not in TERMINAL_STATES)
     joins = _self_joins(today)
     tiles = [
-        ("you", "Needs your OK", len(need), "approve or decide" if need else "nothing waiting"),
+        ("you", "Needs your OK", len(need) + len(open_requests),
+         (f"{len(open_requests)} player request{'s' if len(open_requests) != 1 else ''} · " if open_requests else "")
+         + ("approve or decide" if need else "nothing else waiting")),
         ("", "Rally is working on", len(working), "invites out, waiting on players"),
         ("won", "Filled today", filled["EMPTY_COURT"] + filled["MISSING_PLAYER"] + joins,
          f"{filled['EMPTY_COURT']} court{'s' if filled['EMPTY_COURT'] != 1 else ''} · "
          f"{filled['MISSING_PLAYER']} player{'s' if filled['MISSING_PLAYER'] != 1 else ''} replaced · "
-         f"{joins} joined from \"I'm free\""),
+         f"{joins} joined on their own"),
         ("", "Still open today", f"${open_value:,.0f}", "court time at list price, not revenue"),
     ]
     st.markdown("<div class='today'>" + "".join(
@@ -305,9 +312,48 @@ def header(status: str, mp_views: list[OpportunityView], ec_views: list[Opportun
     st.markdown(
         f"<div class='week'><b>This week:</b> {wf['EMPTY_COURT']} empty court{'s' if wf['EMPTY_COURT'] != 1 else ''} "
         f"filled · {wf['MISSING_PLAYER']} player{'s' if wf['MISSING_PLAYER'] != 1 else ''} replaced · "
-        f"{_self_joins(week)} joined from \"I'm free\" · "
+        f"{_self_joins(week)} joined on their own · "
         f"{sent} invite{'s' if sent != 1 else ''} sent · {optouts} opt-out{'s' if optouts != 1 else ''} "
         f"<span class='small'>(simulated demo, not real results)</span></div>", unsafe_allow_html=True)
+    requests_panel()
+
+
+def requests_panel() -> None:
+    """Players who asked about a game that isn't an exact fit (player app). The club decides; organiser games
+    are answered by their organiser in the player app and only listed here."""
+    reqs = side.pending_requests()
+    flash("requests")
+    if not reqs:
+        return
+    pending = [r for r in reqs if r["status"] == "pending"]
+    with st.expander(f"📩 Player requests · {len(pending)} waiting", expanded=bool(pending)):
+        for r in reqs:
+            with st.container(border=True):
+                c1, c2 = st.columns([3, 2])
+                what = "is interested in the empty court" if r["kind"] == "empty_court" else "asked to join"
+                c1.markdown(f"**{r['name']}** (level {r['player_level']}) {what} **{r['court']}, {r['when']}**"
+                            + (f" · game level {r['level']}, {r['players']}" if r["kind"] != "empty_court" else ""))
+                if r["note"]:
+                    c1.markdown(f"<span class='small'>Their note: “{r['note']}”</span>", unsafe_allow_html=True)
+                c1.markdown(f"<span class='small'>Asked at {r['asked_at']}"
+                            + (" · you said you'd be in touch" if r["status"] == "acknowledged" else "") + "</span>",
+                            unsafe_allow_html=True)
+                choices = ([("acknowledge", "👍 We'll let you know"), ("decline", "Not this time")]
+                           if r["kind"] == "empty_court" else [("approve", "✅ Let them in"), ("decline", "Not this time")])
+                if r["status"] == "acknowledged":
+                    choices = [c for c in choices if c[0] != "acknowledge"]
+                cols = c2.columns(len(choices))
+                for col, (decision, label) in zip(cols, choices):
+                    if col.button(label, key=f"req_{r['request_id']}_{decision}", width="stretch",
+                                  type="primary" if decision in ("approve", "acknowledge") else "secondary"):
+                        try:
+                            msg = side.decide_request(r["request_id"], decision, f"manager:{engine.MANAGER}")
+                            st.session_state["flash"] = ("requests", "success", msg)
+                        except PlayerError as exc:
+                            st.session_state["flash"] = ("requests", "error", str(exc))
+                        st.rerun()
+        st.caption("Letting someone in sends them a booking link; they're in once the booking system shows them as "
+                   "paid. Requests for an organiser's private game go to the organiser.")
 
 
 # ---- opportunity tabs ---------------------------------------------------------------------------------
@@ -430,6 +476,11 @@ def detail(v: OpportunityView) -> None:
     st.markdown(f"{badge(v.state)}", unsafe_allow_html=True)
     stepper(v)
     st.markdown(opp_summary(v))
+    asked = [r for r in engine.storage.requests(target_id=v.opp.opportunity_id)
+             if r["status"] in ("pending", "acknowledged")]
+    if asked and v.state not in TERMINAL_STATES:
+        st.markdown(f"📩 **{len(asked)} player{'s' if len(asked) != 1 else ''} asked about this court** "
+                    "(see Player requests at the top).")
     n_free = free_for(v)
     if n_free and v.state not in TERMINAL_STATES:
         st.markdown(f"🙋 **{n_free} player{'s' if n_free != 1 else ''} said they're free then** in the player app. "

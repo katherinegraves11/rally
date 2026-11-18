@@ -62,6 +62,23 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
    This keeps Rally out of Playtomic's marketplace job (browsing every open match): it only shows
    games that fit this player now.
 
+6. **"Ask about this game" (added 2026-11-17, Katie's call).** Under an "I'm free" window the player
+   also sees *games around your time*: games that don't fit exactly, each with an honest note
+   ("level 3.0, you're 2.2", "starts in 35 min", "ends 30 min after you're free"). They can ask
+   about one, with a short note. **Requests go to whoever decides, never to other players**: no
+   names or numbers are shared between players.
+   - **Open match:** the request appears in *Player requests* on the club dashboard. *Let them in*
+     sends the player a booking link (they book and pay; it counts only once the booking system
+     lists them as paid). *Not this time* sends a polite set reply.
+   - **Organiser's private game:** the request goes to the organiser in their player app, with the
+     player's first name, last initial and level only.
+   - **Empty court:** "I'm interested" is a demand signal on the dashboard ("2 players asked about
+     this court"). The club can reply *We'll let you know* or *Not this time*; if the club then
+     approves an outreach for that court, the player is invited the normal way.
+   - One open request per player per game; a player can withdraw it. Requests close when the game
+     starts or fills. A human approval here is the only way past the level and lead-time rules,
+     and every decision is logged with who made it.
+
 ## Engine additions (`rally/`)
 
 | Change | Where | Rule it keeps |
@@ -76,6 +93,7 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
 | `player_availability` table; active windows on `PlayerProfile.free_windows` | `storage.py`, `engine.profiles()` | Consent required to post |
 | "Free then" ranking bonus (`ranking.free_bonus` in the policy) | `ranking.py`, `club_policy.yaml` | Transparent, rule-based ranking |
 | Self-join: fresh booking-system check, then the booking system lists them as paid | `player_side.py` | No count without the booking system |
+| `join_requests` table; club and organiser decisions; booking only after approval + payment | `storage.py`, `player_side.py`, `app.py` | A human approves; players never contact each other directly |
 
 Organisers: `data/match_organizers.csv` (fictional) names the organiser of each private match.
 

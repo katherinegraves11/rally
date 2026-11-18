@@ -31,7 +31,8 @@ Open http://localhost:8600 on a phone-sized window. It runs on the same engine a
 the dashboard, so approving an outreach on the dashboard puts an invite on that player's phone, and a
 player's reply or payment shows up on the dashboard and in the audit log. It covers five journeys:
 "I'm free" (a solo player picks a time, sees open spots at their level and joins, and moves up the
-list for games that come up), solo invite (yes / no / free text, then book and pay your share), organiser dropout ("find your own, or
+list for games that come up; for near-fits they can "ask about this game", and the club or organiser
+decides), solo invite (yes / no / free text, then book and pay your share), organiser dropout ("find your own, or
 should we?", then choose who Rally may ask), empty-court group invite (counts, never names; booked only
 once all four pay), and opt-in / preferences (times, channel, personal weekly limit, invites off).
 Plan and rules: `docs/PLAYER_APP_ARCHITECTURE.md`. Tests: `tests/test_player_side.py`.

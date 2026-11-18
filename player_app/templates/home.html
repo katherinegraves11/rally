@@ -27,6 +27,27 @@
     {% else %}
       <div class="status off"><b>Nothing open that fits right now</b>When a game at your level comes up in that time, you move up the list to be asked. The club still OKs every invite.</div>
     {% endif %}
+    {% set around = free.around | rejectattr("request") | list %}
+    {% if around %}
+      <div class="section-title" style="margin:18px 0 6px">Games around your time</div>
+      <div class="muted" style="margin-bottom:6px">Not an exact fit, but you can ask. The club (or the game's organiser) decides; other players never see your details.</div>
+      {% for g in around %}
+      <div style="padding:12px 0;border-top:1px solid var(--line)">
+        <div class="row" style="padding:0;border:0">
+          <span class="avatar" style="background:#eef1ef;color:var(--ink)">{{ g.court[-1] }}</span>
+          <span class="grow"><span class="name">{{ g.when }}</span><br>
+            <span class="sub">{{ g.court }} · {% if g.kind != 'empty_court' %}level {{ g.level }} · {% endif %}{{ g.players }}</span></span>
+        </div>
+        <div style="margin:6px 0 0 50px;display:flex;flex-wrap:wrap;gap:4px">{% for n in g.notes %}<span class="pill grey">{{ n }}</span>{% endfor %}</div>
+        <details style="margin:8px 0 0 50px"><summary class="btn small ghost" style="display:inline-block;list-style:none">{{ g.action }}</summary>
+          <form method="post" action="/p/{{ pid }}/ask/{{ g.target_id }}" class="reply" style="margin-top:8px">
+            <input name="note" maxlength="200" placeholder="{{ 'Add a note (optional), e.g. happy to play up a level' if g.kind != 'empty_court' else 'Add a note (optional)' }}" autocomplete="off">
+            <button class="btn small primary">Send</button>
+          </form>
+        </details>
+      </div>
+      {% endfor %}
+    {% endif %}
     <details class="thread"><summary>Add another time</summary>{{ free_form() }}</details>
   {% else %}
     <div class="big" style="font-size:20px">Tell the club when you're free</div>
@@ -53,6 +74,44 @@
   <h1>Hi {{ profile.first_name }}</h1>
   <p>{{ now_label }} · {% if profile.opt_in_status == 'opted_in' %}invites on{% else %}invites off · <a href="/p/{{ pid }}/settings">turn on</a>{% endif %}</p>
 </div>
+
+{% if free.requests %}
+<div class="section-title">Your requests</div>
+{% for r in free.requests %}
+<div class="card {{ 'hero' if r.can_pay else '' }}">
+  <div class="eyebrow">{{ 'YOU ASKED ABOUT' if r.kind != 'empty_court' else "YOU'RE INTERESTED IN" }} · {{ r.court }}</div>
+  <div style="font-weight:800;font-size:17px">{{ r.when }}</div>
+  <div class="status {{ 'ok' if r.status in ('approved', 'booked') else 'wait' if r.status in ('pending', 'acknowledged') else 'off' }}">
+    <b>{{ r.label }}</b>{% if r.status == 'approved' %}Book and pay your share; you're in once it shows as paid.{% elif r.status == 'pending' %}You'll get an answer here.{% elif r.status == 'acknowledged' %}If a group comes together, you'll get an invite.{% elif r.status == 'declined' %}You'll still hear about other games at your level.{% endif %}
+    {% if r.note %}<div class="hint">Your note: “{{ r.note }}”</div>{% endif %}
+  </div>
+  {% if r.can_pay %}
+  <form method="post" action="/p/{{ pid }}/request/{{ r.request_id }}/pay" class="btns"><button class="btn primary">Book and pay ${{ r.price }}</button></form>
+  <div class="hint">Simulated checkout. No real card is charged.</div>
+  {% endif %}
+  {% if r.status in ('pending', 'acknowledged') %}
+  <form method="post" action="/p/{{ pid }}/request/{{ r.request_id }}/withdraw" style="margin-top:8px"><button class="btn small ghost" style="opacity:.75">Withdraw</button></form>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% if org_requests %}
+<div class="section-title">Players asking to join your game</div>
+{% for r in org_requests %}
+<div class="card hero">
+  <div class="eyebrow">REQUEST · {{ r.court }} · {{ r.when }}</div>
+  <div class="big" style="font-size:19px">{{ r.name }} · level {{ r.player_level }}</div>
+  {% if r.note %}<div class="meta">“{{ r.note }}”</div>{% endif %}
+  <div class="meta">Your game is level {{ r.level }} · {{ r.players }}</div>
+  <form method="post" action="/p/{{ pid }}/request/{{ r.request_id }}/decide" class="btns">
+    <button class="btn ghost" name="decision" value="decline">Not this time</button>
+    <button class="btn primary" name="decision" value="approve">Let them in</button>
+  </form>
+  <div class="hint">They only see your first name and last initial. If you say yes, they book and pay their own share.</div>
+</div>
+{% endfor %}
+{% endif %}
 
 {# ---- Organiser: Journey A ---- #}
 {% for o in organiser_cards %}

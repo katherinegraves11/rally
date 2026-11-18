@@ -243,3 +243,74 @@ def test_self_join_blocked_when_booking_system_is_down(engine, side):
         side.self_join(AMA, MP_C6)
     engine.provider.set_outage(False)
     assert AMA not in engine.provider.get_match("M-OPEN-2030-C6").player_ids
+
+
+# ---- "Ask about this game" (near-fits; the club or organiser decides) ---------------------------------
+C4 = "M-OPEN-1130-C4"         # open match 11:30, level 3.0, 3/4 (too soon for invites, level off for Ama)
+EC_1300 = "EC-20261110-1300-C1"
+
+
+def test_games_around_shows_near_fits_with_honest_notes(engine, side):
+    side.post_free(AMA, "today", 11, 14)
+    around = {g["target_id"]: g for g in side.games_around(AMA)}
+    assert C4 in around and EC_1300 in around
+    assert any("level 3.0" in n for n in around[C4]["notes"])
+    assert any("starts in" in n for n in around[C4]["notes"])
+    assert around[EC_1300]["action"] == "I'm interested"
+
+
+def test_club_lets_a_player_in_then_payment_books_it(engine, side):
+    side.post_free(AMA, "today", 11, 14)
+    side.ask_about(AMA, C4, "Happy to play up a level")
+    with pytest.raises(PlayerError):
+        side.ask_about(AMA, C4)                                    # one open request per game
+    rid = side.my_requests(AMA)[0]["request_id"]
+    with pytest.raises(PlayerError):
+        side.pay_request(AMA, rid)                                 # not approved yet
+    side.decide_request(rid, "approve", "manager:test")
+    assert AMA not in engine.provider.get_match(C4).player_ids     # approval alone books nothing
+    side.pay_request(AMA, rid)
+    m = engine.provider.get_match(C4)
+    assert AMA in m.player_ids and m.payment_status == "paid"
+    assert engine.storage.get_request(rid)["status"] == "booked"
+
+
+def test_declined_request_tells_the_player_and_books_nothing(engine, side):
+    side.post_free(AMA, "today", 11, 14)
+    side.ask_about(AMA, C4)
+    rid = side.my_requests(AMA)[0]["request_id"]
+    side.decide_request(rid, "decline", "manager:test")
+    assert side.my_requests(AMA)[0]["label"] == "Not this time"
+    assert any(m["kind"] == "request_declined" for m in engine.storage.messages(player_id=AMA))
+    with pytest.raises(PlayerError):
+        side.pay_request(AMA, rid)
+
+
+def test_only_the_organiser_answers_requests_for_their_game(engine, side):
+    side.post_free("P013", "today", 18, 22)                        # Aisha 3.5; Elif's game is level 4.0
+    side.ask_about("P013", PRIV, "I can play 7pm")
+    rid = side.pending_requests(organiser_id=ORG)[0]["request_id"]
+    assert not side.pending_requests()                             # not in the club's queue
+    assert side.pending_requests(organiser_id=ORG)[0]["name"] == "Aisha D."   # first name + initial only
+    with pytest.raises(PlayerError):
+        side.decide_request(rid, "approve", "manager:test")
+    with pytest.raises(PlayerError):
+        side.decide_request(rid, "approve", "organiser:P014", organiser_id="P014")
+    side.decide_request(rid, "approve", f"organiser:{ORG}", organiser_id=ORG)
+    assert side.my_requests("P013")[0]["can_pay"]
+
+
+def test_empty_court_interest_is_a_signal_not_a_booking(engine, side):
+    side.post_free(AMA, "today", 11, 14)
+    side.ask_about(AMA, EC_1300)
+    rid = side.my_requests(AMA)[0]["request_id"]
+    with pytest.raises(PlayerError):
+        side.decide_request(rid, "approve", "manager:test")        # courts: acknowledge or decline only
+    side.decide_request(rid, "acknowledge", "manager:test")
+    r = side.my_requests(AMA)[0]
+    assert r["label"] == "The club will let you know" and not r["can_pay"]
+
+
+def test_far_off_levels_are_not_shown(engine, side):
+    side.post_free("P013", "today", 18, 23)                        # Aisha 3.5; Court 6 is level 2.5
+    assert all(g["target_id"] != "M-OPEN-2030-C6" for g in side.games_around("P013"))

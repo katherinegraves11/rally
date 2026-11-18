@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 
 from .eligibility import filter_eligible
 from .engine import RallyEngine, short_name
-from .fmt import day_label, level_label, range_label, relative_day, time_label
+from .fmt import day_label, duration_label, level_label, range_label, relative_day, time_label
 from .messaging import price_per_player
 from .occupancy import BAND_LABELS, time_band
 from .schemas import TERMINAL_STATES, InviteStatus as IS, Opportunity, OpportunityType, State
@@ -136,6 +136,7 @@ class PlayerSide:
             "games": self.games(pid),
             "provider_ok": self.e.provider_status == "ok",
             "free": self.free_status(pid),
+            "org_requests": self.pending_requests(organiser_id=pid) if self.e.organized_by(pid) else [],
         }
 
     def version(self, pid: str) -> str:
@@ -145,8 +146,9 @@ class PlayerSide:
         auth = sorted(self.e.storage.organizer_authorizations().items())
         free = [(a["avail_id"], a["status"]) for a in self.e.storage.availability(self.e.now(), pid)]
         opps = sorted(r["opportunity_id"] for r in self.e.storage.opportunities() if r["active"])
+        reqs = [(r["request_id"], r["status"]) for r in self.e.storage.requests()]
         raw = (f"{len(msgs)}|{camps}|{auth}|{self.e.storage.get_meta('sim_now')}|{self.e.provider_status}|"
-               f"{free}|{opps}")
+               f"{free}|{opps}|{reqs}")
         return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
     # ---- invites -----------------------------------------------------------------------------------
@@ -291,7 +293,8 @@ class PlayerSide:
     def games(self, pid: str) -> list[dict]:
         now = self.e.now()
         joined = {e["detail"].get("match_id") for e in self.e.storage.events()
-                  if e["event_type"] == "PLAYER_SELF_JOINED" and e["detail"].get("player_id") == pid}
+                  if e["event_type"] in ("PLAYER_SELF_JOINED", "PLAYER_REQUEST_BOOKED")
+                  and e["detail"].get("player_id") == pid}
         out = []
         for m in self.e.provider.all_matches():
             if pid in m.player_ids and m.end > now:
@@ -498,6 +501,7 @@ class PlayerSide:
         windows = [{"avail_id": a["avail_id"], "label": self._window_label(a["start"], a["end"])}
                    for a in self.e.storage.availability(now, pid)]
         return {"windows": windows, "games": self.games_that_fit(pid) if windows else [],
+                "around": self.games_around(pid) if windows else [], "requests": self.my_requests(pid),
                 **self.free_options()}
 
     def _window_label(self, start: datetime, end: datetime) -> str:
@@ -596,3 +600,241 @@ class PlayerSide:
         if not verified:
             return "Your booking hasn't shown up as paid yet. The club will check it."
         return f"You're in: {opp.court_name}, {range_label(opp.start, opp.end)}. Booked and paid."
+
+
+    # ---- "Ask about this game" (near-fits; requests go to the club or the organiser) ----------------
+    OPEN_REQUEST = ("pending", "approved", "acknowledged")
+    NEAR_LEVEL = 0.8   # near-fits shown within this many levels of the player (exact fits use the club's ±0.3)
+    REQUEST_NOTE_MAX = 200
+
+    def _request_status(self, req: dict | None, kind: str) -> dict | None:
+        if req is None:
+            return None
+        who = "the organiser" if kind == "organiser" else "the club"
+        labels = {"pending": f"Asked · waiting for {who}", "approved": f"{who.capitalize()} said yes",
+                  "declined": "Not this time", "acknowledged": "The club will let you know",
+                  "booked": "You're booked", "withdrawn": "You withdrew this"}
+        return {"request_id": req["request_id"], "status": req["status"], "label": labels.get(req["status"], "")}
+
+    def games_around(self, pid: str) -> list[dict]:
+        """Games overlapping the player's "I'm free" windows that are not exact fits, with honest notes on why.
+        The player can ask about them; the club or organiser decides."""
+        now, policy = self.e.now(), self.e.policy()
+        p = self._profile(pid)
+        if not p.free_windows or self.e.provider_status != "ok":
+            return []
+        tol = policy.eligibility.skill_tolerance
+        min_lead = timedelta(minutes=policy.timing.min_lead_time_minutes)
+        exact = {self.e.opportunity(g["opportunity_id"]).match_id for g in self.games_that_fit(pid)}
+        mine = {r["target_id"]: r for r in self.e.storage.requests(player_id=pid)}
+        matches = self.e.provider.all_matches()
+        busy = [(m.start, m.end) for m in matches if pid in m.player_ids]
+
+        def overlap_notes(start, end):
+            win = next(((ws, we) for ws, we in p.free_windows if start < we and ws < end), None)
+            if win is None:
+                return None
+            ws, we = win
+            notes = []
+            if start < ws:
+                notes.append(f"starts before you're free ({time_label(start)})")
+            if end > we:
+                notes.append(f"ends {duration_label(end - we)} after you're free")
+            return notes
+
+        out = []
+        for m in matches:
+            organiser = self.e.organizer_of(m.match_id) if m.kind == "private" else None
+            if m.open_seats == 0 or (m.kind != "club_open" and not organiser) or m.match_id in exact:
+                continue
+            if pid in m.player_ids or pid in m.dropout_player_ids or organiser == pid:
+                continue
+            if m.start <= now + timedelta(minutes=10) or any(bs < m.end and m.start < be for bs, be in busy):
+                continue
+            notes = overlap_notes(m.start, m.end)
+            if notes is None:
+                continue
+            if m.level is not None and abs(round(p.level - m.level, 2)) > self.NEAR_LEVEL + 1e-9:
+                continue
+            if m.level is not None and abs(round(p.level - m.level, 2)) > tol + 1e-9:
+                notes.insert(0, f"level {level_label(m.level)}, you're {level_label(p.level)}")
+            if m.start - now < min_lead:
+                notes.append(f"starts in {duration_label(m.start - now)}")
+            kind = "organiser" if organiser else "open_match"
+            if not notes and kind == "open_match":
+                notes.append("the club is already asking players about this one")
+            if kind == "organiser":
+                notes.append(f"{short_name(self._profile(organiser).name)}'s private game")
+            req = mine.get(m.match_id)
+            req = req if req and req["status"] != "withdrawn" else None
+            out.append({"target_id": m.match_id, "kind": kind, "court": f"Court {m.court_id[1:]}",
+                        "when": f"{relative_day(m.start, now)} · {range_label(m.start, m.end)}",
+                        "level": level_label(m.level) if m.level is not None else "any",
+                        "players": f"{len(m.player_ids)} of {m.capacity} in", "notes": notes, "start": m.start,
+                        "request": self._request_status(req, kind), "action": "Ask about this game"})
+        for row in self.e.storage.opportunities():
+            if not row["active"] or row["type"] != OpportunityType.EMPTY_COURT.value:
+                continue
+            opp = Opportunity.model_validate(row["payload"])
+            if opp.start <= now + timedelta(minutes=10) or any(bs < opp.end and opp.start < be for bs, be in busy):
+                continue
+            notes = overlap_notes(opp.start, opp.end)
+            if notes is None:
+                continue
+            notes.insert(0, "not a game yet: it needs 4 players")
+            req = mine.get(opp.opportunity_id)
+            req = req if req and req["status"] != "withdrawn" else None
+            out.append({"target_id": opp.opportunity_id, "kind": "empty_court", "court": opp.court_name,
+                        "when": f"{relative_day(opp.start, now)} · {range_label(opp.start, opp.end)}",
+                        "level": "open", "players": "empty court", "notes": notes, "start": opp.start,
+                        "request": self._request_status(req, "empty_court"), "action": "I'm interested"})
+        return sorted(out, key=lambda g: g["start"])
+
+    def ask_about(self, pid: str, target_id: str, note: str = "") -> None:
+        p = self._profile(pid)
+        if p.opt_in_status != "opted_in":
+            raise PlayerError("Turn invites on first, so the club can reply to you.")
+        note = (note or "").strip()
+        if len(note) > self.REQUEST_NOTE_MAX:
+            raise PlayerError(f"Please keep the note under {self.REQUEST_NOTE_MAX} characters.")
+        game = next((g for g in self.games_around(pid) if g["target_id"] == target_id), None)
+        if game is None:
+            raise PlayerError("That game isn't available to ask about any more.")
+        if game["request"] and game["request"]["status"] in self.OPEN_REQUEST:
+            raise PlayerError("You've already asked about this game.")
+        now = self.e.now()
+        with self.e.storage.connect() as conn:
+            rid = self.e.storage.add_request(conn, pid, target_id, game["kind"], note, now)
+        self._log("PLAYER_JOIN_REQUEST", pid, {"request_id": rid, "target_id": target_id, "kind": game["kind"],
+                                               "notes": game["notes"], "note": note,
+                                               "goes_to": "organiser" if game["kind"] == "organiser" else "club"},
+                  opportunity_id=target_id if game["kind"] == "empty_court" else f"MP-{target_id}")
+
+    def withdraw_request(self, pid: str, request_id: int) -> None:
+        req = self.e.storage.get_request(request_id)
+        if req is None or req["player_id"] != pid or req["status"] not in ("pending", "acknowledged", "approved"):
+            raise PlayerError("There's nothing to withdraw.")
+        with self.e.storage.connect() as conn:
+            self.e.storage.set_request(conn, request_id, "withdrawn", self.e.now())
+        self._log("PLAYER_JOIN_REQUEST_WITHDRAWN", pid, {"request_id": request_id})
+
+    def my_requests(self, pid: str) -> list[dict]:
+        """Requests the player made that are still worth showing (open, or decided in the last day)."""
+        out = []
+        for r in self.e.storage.requests(player_id=pid):
+            if r["status"] == "withdrawn":
+                continue
+            info = self._target_info(r)
+            if info is None or info["start"] <= self.e.now():
+                continue
+            out.append({**info, **self._request_status(r, r["kind"]), "kind": r["kind"], "note": r["note"] or "",
+                        "can_pay": r["status"] == "approved" and r["kind"] != "empty_court",
+                        "price": price_per_player(self.e.policy())})
+        return out
+
+    def _target_info(self, r: dict) -> dict | None:
+        now = self.e.now()
+        if r["kind"] == "empty_court":
+            row = self.e.storage.get_opportunity(r["target_id"])
+            if row is None:
+                return None
+            o = Opportunity.model_validate(row["payload"])
+            return {"court": o.court_name, "when": f"{relative_day(o.start, now)} · {range_label(o.start, o.end)}",
+                    "start": o.start, "level": "open", "players": "empty court"}
+        m = self.e.provider.get_match(r["target_id"]) if self.e.provider_status == "ok" else None
+        if m is None:
+            return None
+        return {"court": f"Court {m.court_id[1:]}", "when": f"{relative_day(m.start, now)} · {range_label(m.start, m.end)}",
+                "start": m.start, "level": level_label(m.level) if m.level is not None else "any",
+                "players": f"{len(m.player_ids)} of {m.capacity} in"}
+
+    def pending_requests(self, organiser_id: str | None = None) -> list[dict]:
+        """Open requests for the club (organiser_id None: open matches and empty courts) or one organiser."""
+        profiles = self.e.profiles()
+        out = []
+        for r in self.e.storage.requests():
+            if r["status"] not in ("pending", "acknowledged"):
+                continue
+            if organiser_id is None and r["kind"] == "organiser":
+                continue
+            if organiser_id is not None and (r["kind"] != "organiser"
+                                             or self.e.organizer_of(r["target_id"]) != organiser_id):
+                continue
+            info = self._target_info(r)
+            if info is None or info["start"] <= self.e.now():
+                continue
+            p = profiles[r["player_id"]]
+            out.append({**info, "request_id": r["request_id"], "kind": r["kind"], "status": r["status"],
+                        "note": r["note"] or "", "player_id": p.player_id,
+                        "name": p.name if organiser_id is None else short_name(p.name),
+                        "player_level": level_label(p.level), "asked_at": time_label(datetime.fromisoformat(r["created_at"]))})
+        return out
+
+    def decide_request(self, request_id: int, decision: str, decided_by: str, organiser_id: str | None = None) -> str:
+        """decision: approve | decline | acknowledge. The club decides open matches and empty courts; only the
+        game's organiser decides requests for their private game."""
+        r = self.e.storage.get_request(request_id)
+        if r is None or r["status"] not in ("pending", "acknowledged"):
+            raise PlayerError("That request has already been answered.")
+        if r["kind"] == "organiser":
+            if organiser_id is None or self.e.organizer_of(r["target_id"]) != organiser_id:
+                raise PlayerError("Only the game's organiser can answer this request.")
+        elif organiser_id is not None:
+            raise PlayerError("The club answers this request.")
+        allowed = {"empty_court": ("acknowledge", "decline")}.get(r["kind"], ("approve", "decline"))
+        if decision not in allowed:
+            raise PlayerError("That choice isn't available for this request.")
+        now, policy = self.e.now(), self.e.policy()
+        p = self._profile(r["player_id"])
+        info = self._target_info(r)
+        if info is None or info["start"] <= now:
+            raise PlayerError("That game has already started or gone.")
+        if decision == "approve":
+            m = self.e.provider.get_match(r["target_id"])
+            if self.e.provider.health() != "ok" or m is None or m.open_seats == 0:
+                raise PlayerError("The spot isn't open any more, so there's nothing to approve.")
+        status = {"approve": "approved", "decline": "declined", "acknowledge": "acknowledged"}[decision]
+        when = f"{info['court']} {info['when'].split(' · ')[-1]}"
+        body = {"approved": (f"Good news, {p.first_name}: you can join the game on {when}. Book and pay your "
+                             f"${price_per_player(policy)} share in Rally; your spot is confirmed once it shows as paid."),
+                "declined": (f"Thanks for asking about {when}, {p.first_name}. It's not a fit this time, but you'll "
+                             "hear about other games at your level."),
+                "acknowledged": (f"Thanks {p.first_name}! We've noted you're interested in {when}. If a group comes "
+                                 "together, you'll get an invite.")}[status]
+        with self.e.storage.connect() as conn:
+            self.e.storage.set_request(conn, request_id, status, now, decided_by=decided_by)
+            self.e.messaging.send(conn, campaign_id=None, invite_id=None, player_id=p.player_id,
+                                  channel=p.opt_in_channel, kind=f"request_{status}", body=body, now=now)
+        self.e._log("JOIN_REQUEST_" + status.upper(), actor=decided_by, tool="player_requests",
+                    detail={"request_id": request_id, "player_id": p.player_id, "target_id": r["target_id"],
+                            "kind": r["kind"], "simulated_message": True})
+        return {"approved": f"{p.first_name} can now book and pay.", "declined": f"{p.first_name} has been told.",
+                "acknowledged": f"{p.first_name} knows you'll be in touch."}[status]
+
+    def pay_request(self, pid: str, request_id: int) -> str:
+        r = self.e.storage.get_request(request_id)
+        if r is None or r["player_id"] != pid or r["status"] != "approved" or r["kind"] == "empty_court":
+            raise PlayerError("There's nothing to pay for here.")
+        if self.e.provider.health() != "ok":
+            raise PlayerError("The booking system isn't answering right now. You have not been charged.")
+        m = self.e.provider.get_match(r["target_id"])
+        if m is None or m.start <= self.e.now():
+            raise PlayerError("That game has already started.")
+        if m.open_seats == 0 and pid not in m.player_ids:
+            raise PlayerError("Sorry, the spot was just taken. You have not been charged.")
+        self.e.provider.simulate_seat_filled(m.match_id, pid, "paid")
+        after = self.e.provider.get_match(m.match_id)
+        verified = after is not None and pid in after.player_ids and \
+            after.payment_status == self.e.policy().booking.required_payment_status
+        now = self.e.now()
+        window = next((a for a in self.e.storage.availability(now, pid)
+                       if a["start"] < m.end and m.start < a["end"]), None)
+        with self.e.storage.connect() as conn:
+            if verified:
+                self.e.storage.set_request(conn, request_id, "booked", now)
+            if window:
+                self.e.storage.set_availability_status(conn, window["avail_id"], "joined")
+        self._log("PLAYER_REQUEST_BOOKED", pid, {"request_id": request_id, "match_id": m.match_id,
+                                                 "verified": verified, "simulated": True})
+        self.e.refresh()
+        return "You're in: booked and paid." if verified else "Your booking hasn't shown as paid yet."

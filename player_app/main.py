@@ -217,6 +217,50 @@ def join(pid: str, opp_id: str):
     return _back(pid, msg=msg)
 
 
+@app.post("/p/{pid}/ask/{target_id}")
+def ask(pid: str, target_id: str, note: str = Form("")):
+    with _lock:
+        _ensure()
+        try:
+            side.ask_about(pid, target_id, note)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, err=str(exc))
+    return _back(pid, msg="Sent. You'll get an answer here.")
+
+
+@app.post("/p/{pid}/request/{request_id}/withdraw")
+def withdraw(pid: str, request_id: int):
+    with _lock:
+        _ensure()
+        try:
+            side.withdraw_request(pid, request_id)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, err=str(exc))
+    return _back(pid, msg="Withdrawn.")
+
+
+@app.post("/p/{pid}/request/{request_id}/pay")
+def pay_request(pid: str, request_id: int):
+    with _lock:
+        _ensure()
+        try:
+            msg = side.pay_request(pid, request_id)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, err=str(exc))
+    return _back(pid, msg=msg)
+
+
+@app.post("/p/{pid}/request/{request_id}/decide")
+def organiser_decide_request(pid: str, request_id: int, decision: str = Form(...)):
+    with _lock:
+        _ensure()
+        try:
+            msg = side.decide_request(request_id, decision, f"organiser:{pid}", organiser_id=pid)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, err=str(exc))
+    return _back(pid, msg=msg)
+
+
 @app.get("/api/p/{pid}/version")
 def version(pid: str):
     with _lock:
