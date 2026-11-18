@@ -440,3 +440,57 @@ def test_only_the_texted_chat_message_is_marked_as_texted(engine, side):
     side.post_chat("P001", OPEN_C2, "second")
     chat = [a for a in side.notifications("P002") if a["key"].startswith("c:")]
     assert [a["texted"] for a in chat] == [False, True]          # newest first: only the first was texted
+
+
+# ---- one place per conversation; any booked player can ask for a 4th ----------------------------------
+def test_booked_invite_leaves_earlier_and_club_messages_move_to_the_game(engine, side):
+    cid = approve(engine, MP_MAIN, n=1)
+    pid = engine.storage.get_campaign(cid)["approval"]["approved_player_ids"][0]
+    side.reply(pid, f"{cid}:{pid}", "yes")
+    side.pay(pid, f"{cid}:{pid}")
+    home = side.home(pid)
+    assert not [c for c in home["past_cards"] if c.status == "booked"]
+    page = side.game_page(pid, OPEN_C2)
+    assert page["club_messages"] and any("Reply" in m["body"] for m in page["club_messages"])
+
+
+def test_booked_player_asks_the_club_for_a_4th(engine, side):
+    page = side.game_page("P001", OPEN_C2)                        # 3/4: Ethan dropped out
+    assert page["open_spots"] == 1 and page["fill"]["state"] == "can_ask"
+    side.request_fill("P001", OPEN_C2)
+    assert side.game_page("P001", OPEN_C2)["fill"]["state"] == "asked"
+    reqs = side.pending_requests()
+    assert reqs and reqs[0]["kind"] == "fill_club"
+    with pytest.raises(PlayerError):
+        side.decide_request(reqs[0]["request_id"], "approve", "manager:test")   # acknowledge or decline only
+    side.decide_request(reqs[0]["request_id"], "acknowledge", "manager:test")
+    assert side.latest_unread("P001")["body"].startswith("Thanks Daniela: the club is finding a 4th")
+
+
+def test_once_rally_is_asking_players_see_progress_not_names(engine, side):
+    approve(engine, MP_MAIN, n=2)
+    fill = side.game_page("P001", OPEN_C2)["fill"]
+    assert fill["state"] == "finding" and "1 player asked" in fill["detail"]
+    with pytest.raises(PlayerError):
+        side.request_fill("P001", OPEN_C2)
+
+
+def test_everyone_in_the_game_hears_it_is_full(engine, side):
+    cid = approve(engine, MP_MAIN, n=1)
+    pid = engine.storage.get_campaign(cid)["approval"]["approved_player_ids"][0]
+    side.reply(pid, f"{cid}:{pid}", "yes")
+    side.pay(pid, f"{cid}:{pid}")
+    for teammate in ("P001", "P002", "P003"):
+        assert any(a["title"] == "Your game is full" for a in side.notifications(teammate))
+    assert side.game_page("P001", OPEN_C2)["fill"] is None
+
+
+def test_non_organiser_in_a_private_game_asks_the_organiser(engine, side):
+    page = side.game_page("P014", PRIV)                           # Ben is in Elif's game, not the organiser
+    assert page["fill"]["state"] == "can_ask" and "Elif Y." in page["fill"]["action"]
+    side.request_fill("P014", PRIV)
+    assert not side.pending_requests()                            # not the club's call
+    inbox = side.pending_requests(organiser_id=ORG)
+    assert inbox[0]["kind"] == "fill_organiser"
+    assert side.latest_unread(ORG)["title"] == "Ben T. asked you to find a 4th"
+    assert side.game_page(ORG, PRIV)["fill"]["state"] == "organiser"

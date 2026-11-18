@@ -111,6 +111,19 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
    - Read state is per player. Alerts are built from what already happened (messages, chat,
      requests, the event log), so nothing new can drift out of sync.
 
+9. **One place per conversation, and any player can ask for a 4th (added 2026-11-17, Katie's review).**
+   - Home shows each booked game as a card with two clear buttons, **Details** and **Chat** (with a
+     "new" count). Once booked, the invite card and its club texts leave "Earlier"; the club's texts
+     sit on the game page under a collapsed **Messages from the club**, separate from **Game chat**.
+   - **When a booked game has an open spot** (someone dropped out), every booked player sees it on
+     the game page ("Open spot") and can ask for help:
+     - club open match: **Ask the club to find a 4th** (goes to Player requests on the dashboard and
+       to that game's page; the club approves the outreach as usual);
+     - private game, not the organiser: **Ask the organiser to find a 4th** (alerts the organiser,
+       who uses "Find someone for me"); the organiser sees their usual flow;
+     - if Rally is already asking players: "The club is finding a 4th" (no names of who was asked).
+   - Every booked player gets a "Your game is full" alert when the spot is filled.
+
 ## Engine additions (`rally/`)
 
 | Change | Where | Rule it keeps |

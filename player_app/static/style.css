@@ -222,3 +222,11 @@ a.row { color: inherit; }
 .alert .t { font-weight: 800; }
 .alert .b { font-size: 13.5px; color: var(--ink-2); }
 .alert .w { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+
+.game-card { padding: 14px; }
+.game-head { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
+.avatar.court { width: 46px; height: 46px; font-size: 18px; background: var(--ball); color: var(--ball-ink); }
+.game-day { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--court-2); }
+.game-time { display: block; font-size: 19px; font-weight: 800; letter-spacing: -.01em; line-height: 1.25; }
+.game-actions { display: flex; gap: 8px; margin-top: 12px; }
+.game-actions .btn { min-width: 0; padding: 11px 12px; font-size: 15px; }

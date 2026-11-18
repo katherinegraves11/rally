@@ -101,6 +101,16 @@
 {% for r in org_requests %}
 <div class="card hero">
   <div class="eyebrow">REQUEST · {{ r.court }} · {{ r.when }}</div>
+  {% if r.kind == 'fill_organiser' %}
+  <div class="big" style="font-size:19px">{{ r.name }} asked you to find a 4th</div>
+  <div class="meta">Someone dropped out of your game ({{ r.players }}).</div>
+  {% if r.status == 'pending' %}
+  <form method="post" action="/p/{{ pid }}/request/{{ r.request_id }}/decide" class="btns">
+    <button class="btn ghost" name="decision" value="decline">I'll handle it</button>
+    <button class="btn primary" name="decision" value="find">Find someone for me</button>
+  </form>
+  {% else %}<div class="hint">You said you're on it. Use "Find someone for me" on your game below.</div>{% endif %}
+  {% else %}
   <div class="big" style="font-size:19px">{{ r.name }} · level {{ r.player_level }}</div>
   {% if r.note %}<div class="meta">“{{ r.note }}”</div>{% endif %}
   <div class="meta">Your game is level {{ r.level }} · {{ r.players }}</div>
@@ -109,6 +119,7 @@
     <button class="btn primary" name="decision" value="approve">Let them in</button>
   </form>
   <div class="hint">They only see your first name and last initial. If you say yes, they book and pay their own share.</div>
+  {% endif %}
 </div>
 {% endfor %}
 {% endif %}
@@ -195,13 +206,23 @@
 
 {% if games %}
 <div class="section-title">Your games</div>
-<div class="list">
-  {% for g in games %}
-  <a class="row" href="/p/{{ pid }}/game/{{ g.match_id }}"><span class="avatar" style="background:var(--ball);color:var(--ball-ink)">{{ g.court[-1] }}</span>
-    <span class="grow"><span class="name">{{ g.when }}</span><br><span class="sub">{{ g.court }} · {{ g.players }} players{% if g.organiser %} · you organise{% endif %} · <u>details & chat</u></span></span>
-    {% if g.via_rally %}<span class="pill green">via Rally</span>{% endif %}</a>
-  {% endfor %}
+{% for g in games %}
+<div class="card game-card">
+  <a class="game-head" href="/p/{{ pid }}/game/{{ g.match_id }}">
+    <span class="avatar court">{{ g.court[-1] }}</span>
+    <span class="grow">
+      <span class="game-day">{{ g.day|capitalize }}</span>
+      <span class="game-time">{{ g.time }}</span>
+      <span class="sub">{{ g.court }} · {{ g.players }} players{% if g.organiser %} · you organise{% endif %}</span>
+    </span>
+    {% if g.via_rally %}<span class="pill green">via Rally</span>{% endif %}
+  </a>
+  <div class="game-actions">
+    <a class="btn ghost" href="/p/{{ pid }}/game/{{ g.match_id }}">📍 Details</a>
+    <a class="btn {{ 'primary' if g.unread_chat else 'ghost' }}" href="/p/{{ pid }}/game/{{ g.match_id }}#chat">💬 Chat{% if g.unread_chat %} · {{ g.unread_chat }} new{% endif %}</a>
+  </div>
 </div>
+{% endfor %}
 {% endif %}
 
 {% if not open_cards and games %}{{ free_card(false) }}{% endif %}

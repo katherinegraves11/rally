@@ -9,11 +9,29 @@
   <div class="status" style="margin-top:12px"><b>Where</b>{{ game.address }}<div class="hint" style="margin-top:4px">Arrive 10 minutes early to warm up. Your court is {{ game.court }}.</div></div>
 </div>
 
+{% if game.fill %}
+<div class="card {{ 'hero' if game.fill.state == 'can_ask' else '' }}">
+  <div class="eyebrow">{{ game.open_spots }} OPEN SPOT{{ 'S' if game.open_spots > 1 else '' }}</div>
+  <div class="status {{ 'wait' if game.fill.state in ('finding', 'asked') else 'off' }}" style="margin-top:6px"><b>{{ game.fill.title }}</b>{{ game.fill.detail }}</div>
+  {% if game.fill.state == 'can_ask' %}
+  <form method="post" action="/p/{{ pid }}/game/{{ game.match_id }}/fill" class="btns">
+    <button class="btn primary">{{ game.fill.action }}</button></form>
+  <div class="hint">Rally only invites opted-in players at your game's level, and someone at the club or the organiser approves who's asked.</div>
+  {% elif game.fill.state == 'organiser' %}
+  <div class="btns"><a class="btn primary" href="/p/{{ pid }}">Go to Games</a></div>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="section-title">Who's playing</div>
 <div class="list">
   {% for p in game.team %}
   <div class="row"><span class="avatar">{{ 'Y' if p.name == 'You' else p.name[0] }}</span>
     <span class="grow"><span class="name">{{ p.name }}</span><br><span class="sub">Level {{ p.level }}{% if p.organiser %} · organiser{% endif %}</span></span></div>
+  {% endfor %}
+  {% for i in range(game.open_spots) %}
+  <div class="row" style="opacity:.6"><span class="avatar" style="background:#e8e6df;color:var(--ink-3)">?</span>
+    <span class="grow"><span class="name">Open spot</span><br><span class="sub">{{ 'Being filled' if game.fill and game.fill.state == 'finding' else 'Someone dropped out' }}</span></span></div>
   {% endfor %}
 </div>
 <p class="small-print" style="margin-top:8px">Phone numbers are never shared. Use the game chat to sort out anything before you play.</p>
@@ -51,4 +69,11 @@
   <div class="status off"><b>This chat has closed</b>Game chats close 3 hours after the game ends.</div>
   {% endif %}
 </div>
+{% if game.club_messages %}
+<details class="card thread" style="margin-top:12px">
+  <summary>Messages from the club ({{ game.club_messages|length }})</summary>
+  <div class="muted" style="margin-top:8px">The texts the club sent you about joining this game. To talk to your teammates, use Game chat above.</div>
+  <div class="bubbles">{% for m in game.club_messages %}<div class="bubble {{ m.dir }}">{{ m.body }}<span class="ts">{{ m.ts }}</span></div>{% endfor %}</div>
+</details>
+{% endif %}
 {% endblock %}

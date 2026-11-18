@@ -358,16 +358,22 @@ def requests_panel() -> None:
         for r in reqs:
             with st.container(border=True):
                 c1, c2 = st.columns([3, 2])
-                what = "is interested in the empty court" if r["kind"] == "empty_court" else "asked to join"
+                what = {"empty_court": "is interested in the empty court",
+                        "fill_club": "is booked in, and asked you to find a 4th for"}.get(r["kind"], "asked to join")
                 c1.markdown(f"**{r['name']}** (level {r['player_level']}) {what} **{r['court']}, {r['when']}**"
                             + (f" · game level {r['level']}, {r['players']}" if r["kind"] != "empty_court" else ""))
+                if r["kind"] == "fill_club":
+                    c1.markdown("<span class='small'>Open the game under <b>Players needed</b> to approve who Rally "
+                                "asks.</span>", unsafe_allow_html=True)
                 if r["note"]:
                     c1.markdown(f"<span class='small'>Their note: “{r['note']}”</span>", unsafe_allow_html=True)
                 c1.markdown(f"<span class='small'>Asked at {r['asked_at']}"
                             + (" · you said you'd be in touch" if r["status"] == "acknowledged" else "") + "</span>",
                             unsafe_allow_html=True)
                 choices = ([("acknowledge", "👍 We'll let you know"), ("decline", "Not this time")]
-                           if r["kind"] == "empty_court" else [("approve", "✅ Let them in"), ("decline", "Not this time")])
+                           if r["kind"] == "empty_court" else
+                           [("acknowledge", "👍 On it"), ("decline", "We'll handle it at the desk")]
+                           if r["kind"] == "fill_club" else [("approve", "✅ Let them in"), ("decline", "Not this time")])
                 if r["status"] == "acknowledged":
                     choices = [c for c in choices if c[0] != "acknowledge"]
                 cols = c2.columns(len(choices))
@@ -504,6 +510,11 @@ def detail(v: OpportunityView) -> None:
     st.markdown(f"{badge(v.state)}", unsafe_allow_html=True)
     stepper(v)
     st.markdown(opp_summary(v))
+    fills = [r for r in engine.storage.requests(target_id=v.opp.match_id or "")
+             if r["kind"] == "fill_club" and r["status"] in ("pending", "acknowledged")]
+    if fills and v.state not in TERMINAL_STATES:
+        names = ", ".join(engine.profiles()[r["player_id"]].first_name for r in fills)
+        st.markdown(f"🆘 **{names} (booked in this game) asked you to find a 4th.**")
     asked = [r for r in engine.storage.requests(target_id=v.opp.opportunity_id)
              if r["status"] in ("pending", "acknowledged")]
     if asked and v.state not in TERMINAL_STATES:

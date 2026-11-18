@@ -259,6 +259,13 @@ def organiser_decide_request(pid: str, request_id: int, decision: str = Form(...
     with _lock:
         _ensure()
         try:
+            if decision == "find":   # organiser answers "find a 4th" by asking Rally to help
+                req = _engine.storage.get_request(request_id)
+                if req is None or req["kind"] != "fill_organiser":
+                    raise PlayerError("That request can't be answered this way.")
+                side.decide_request(request_id, "acknowledge", f"organiser:{pid}", organiser_id=pid)
+                side.organiser_decide(pid, req["target_id"], "rally")
+                return _back(pid, f"/organise/{req['target_id']}")
             msg = side.decide_request(request_id, decision, f"organiser:{pid}", organiser_id=pid)
         except (PlayerError, ValueError) as exc:
             return _back(pid, err=str(exc))
@@ -288,6 +295,17 @@ def post_chat(pid: str, match_id: str, text: str = Form("")):
         except (PlayerError, ValueError) as exc:
             return _back(pid, f"/game/{match_id}", err=str(exc))
     return RedirectResponse(f"/p/{pid}/game/{match_id}#chat-end", status_code=303)
+
+
+@app.post("/p/{pid}/game/{match_id}/fill")
+def request_fill(pid: str, match_id: str):
+    with _lock:
+        _ensure()
+        try:
+            side.request_fill(pid, match_id)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, f"/game/{match_id}", err=str(exc))
+    return _back(pid, f"/game/{match_id}", msg="Sent. You'll get an alert when the spot is filled.")
 
 
 @app.post("/p/{pid}/game/{match_id}/report/{msg_id}")
