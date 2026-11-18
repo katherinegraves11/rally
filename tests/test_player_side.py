@@ -374,3 +374,69 @@ def test_chat_closes_after_the_game(engine, side):
     assert not side.game_page("P001", OPEN_C2)["chat_open"]
     with pytest.raises(PlayerError):
         side.post_chat("P001", OPEN_C2, "gg")
+
+
+# ---- notifications ---------------------------------------------------------------------------------------
+def test_invite_creates_an_unread_alert_and_opening_alerts_marks_read(engine, side):
+    cid = approve(engine, MP_MAIN, n=1)
+    pid = engine.storage.get_campaign(cid)["approval"]["approved_player_ids"][0]
+    alerts = side.notifications(pid)
+    assert alerts[0]["title"] == "New game invite" and alerts[0]["unread"]
+    assert side.unread_count(pid) == 1
+    side.mark_all_read(pid)
+    assert side.unread_count(pid) == 0
+    side.reply(pid, f"{cid}:{pid}", "yes")
+    assert side.latest_unread(pid)["title"].startswith("You're in")
+
+
+def test_chat_alerts_teammates_not_the_author(engine, side):
+    side.post_chat("P001", OPEN_C2, "Who's bringing balls?")
+    assert side.unread_count("P001") == 0
+    a = side.latest_unread("P002")
+    assert a["title"] == "Daniela M. · Court 2 chat" and a["link"].endswith("#chat")
+
+
+def test_chat_text_never_contains_the_message_and_is_rate_limited(engine, side):
+    side.post_chat("P001", OPEN_C2, "secret plan")
+    side.post_chat("P001", OPEN_C2, "another one")
+    texts = [m for m in engine.storage.messages(player_id="P002") if m["kind"] == "chat_alert"]
+    assert len(texts) == 1 and "secret" not in texts[0]["body"]
+    engine.advance(31)
+    side.post_chat("P001", OPEN_C2, "third")
+    assert len([m for m in engine.storage.messages(player_id="P002") if m["kind"] == "chat_alert"]) == 2
+
+
+def test_no_chat_texts_in_quiet_hours_or_when_switched_off(engine, side):
+    side.set_chat_texts("P002", False)
+    side.post_chat("P001", OPEN_C2, "hi")
+    assert not [m for m in engine.storage.messages(player_id="P002") if m["kind"] == "chat_alert"]
+    assert side.unread_count("P002") == 1                         # still alerted in the app
+    engine.advance(int((engine.now().replace(hour=21, minute=30) - engine.now()).total_seconds() // 60))
+    side.post_chat("P001", OPEN_C2, "late")
+    assert not [m for m in engine.storage.messages(player_id="P003") if m["kind"] == "chat_alert"
+                and m["sim_ts"] >= engine.now().replace(hour=21).isoformat()]
+
+
+def test_muted_chat_sends_no_alert_at_all(engine, side):
+    side.set_mute("P002", OPEN_C2, True)
+    side.post_chat("P001", OPEN_C2, "hi")
+    assert side.unread_count("P002") == 0
+    assert not [m for m in engine.storage.messages(player_id="P002") if m["kind"] == "chat_alert"]
+
+
+def test_organiser_hears_about_requests_and_progress(engine, side):
+    side.post_free("P013", "today", 18, 22)
+    side.ask_about("P013", PRIV, "I can play 7pm")
+    assert side.latest_unread(ORG)["title"] == "Aisha D. asked to join your game"
+    side.mark_all_read(ORG)
+    side.organiser_decide(ORG, PRIV, "rally")
+    cands = side.organiser_candidates(ORG, PRIV)
+    side.organiser_approve(ORG, PRIV, [cands[0]["player_id"]])
+    assert side.latest_unread(ORG)["title"].startswith("Rally asked ")
+
+
+def test_only_the_texted_chat_message_is_marked_as_texted(engine, side):
+    side.post_chat("P001", OPEN_C2, "first")
+    side.post_chat("P001", OPEN_C2, "second")
+    chat = [a for a in side.notifications("P002") if a["key"].startswith("c:")]
+    assert [a["texted"] for a in chat] == [False, True]          # newest first: only the first was texted

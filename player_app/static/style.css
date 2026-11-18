@@ -212,3 +212,13 @@ nav.tabs a.on { color: var(--court); background: #e9efe9; }
 .report { appearance: none; border: 0; background: none; font: inherit; font-size: 10.5px; text-decoration: underline;
   opacity: .6; cursor: pointer; padding: 0; margin-left: 4px; color: inherit; }
 a.row { color: inherit; }
+
+.badge { position: absolute; top: -6px; right: -12px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px;
+  background: #d83a2b; color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
+.alert { display: flex; gap: 12px; padding: 13px 14px; border-top: 1px solid var(--line); text-decoration: none; color: inherit; }
+.alert:first-child { border-top: 0; }
+.alert.unread { background: #f3f8e4; }
+.alert .ic { font-size: 20px; line-height: 1.2; flex: 0 0 auto; }
+.alert .t { font-weight: 800; }
+.alert .b { font-size: 13.5px; color: var(--ink-2); }
+.alert .w { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }

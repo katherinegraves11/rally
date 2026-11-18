@@ -42,6 +42,10 @@
     <input name="text" maxlength="500" placeholder="Message your teammates" autocomplete="off">
     <button class="btn small dark">Send</button>
   </form>
+  <form method="post" action="/p/{{ pid }}/game/{{ game.match_id }}/mute" style="margin-top:10px">
+    <input type="hidden" name="on" value="{{ '0' if game.muted else '1' }}">
+    <button class="btn small ghost" style="opacity:.8">{{ '🔔 Unmute this chat' if game.muted else '🔕 Mute this chat' }}</button>
+  </form>
   <div class="hint">Only the players booked in this game can see this chat. It closes at {{ game.chat_closes }}. Report anything that makes you uncomfortable and the club will review it.</div>
   {% else %}
   <div class="status off"><b>This chat has closed</b>Game chats close 3 hours after the game ends.</div>

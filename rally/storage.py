@@ -153,6 +153,25 @@ CREATE TABLE IF NOT EXISTS game_chat (
     reviewed_by TEXT
 );
 
+CREATE TABLE IF NOT EXISTS notification_seen (
+    player_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    PRIMARY KEY (player_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS chat_mutes (
+    player_id TEXT NOT NULL,
+    match_id TEXT NOT NULL,
+    PRIMARY KEY (player_id, match_id)
+);
+
+CREATE TABLE IF NOT EXISTS player_prefs (     -- small per-player switches (separate table: no migration needed)
+    player_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (player_id, key)
+);
+
 CREATE TABLE IF NOT EXISTS player_payments (
     campaign_id TEXT NOT NULL,
     player_id TEXT NOT NULL,
@@ -507,6 +526,35 @@ class Storage:
 
     def review_chat(self, conn: sqlite3.Connection, msg_id: int, status: str, reviewer: str) -> None:
         conn.execute("UPDATE game_chat SET status = ?, reviewed_by = ? WHERE msg_id = ?", (status, reviewer, msg_id))
+
+    def seen_keys(self, player_id: str) -> set[str]:
+        with self.connect() as conn:
+            return {r["key"] for r in conn.execute("SELECT key FROM notification_seen WHERE player_id = ?",
+                                                    (player_id,)).fetchall()}
+
+    def mark_seen(self, conn: sqlite3.Connection, player_id: str, keys: list[str]) -> None:
+        conn.executemany("INSERT OR IGNORE INTO notification_seen VALUES (?, ?)", [(player_id, k) for k in keys])
+
+    def muted(self, player_id: str) -> set[str]:
+        with self.connect() as conn:
+            return {r["match_id"] for r in conn.execute("SELECT match_id FROM chat_mutes WHERE player_id = ?",
+                                                         (player_id,)).fetchall()}
+
+    def set_mute(self, conn: sqlite3.Connection, player_id: str, match_id: str, on: bool) -> None:
+        if on:
+            conn.execute("INSERT OR IGNORE INTO chat_mutes VALUES (?, ?)", (player_id, match_id))
+        else:
+            conn.execute("DELETE FROM chat_mutes WHERE player_id = ? AND match_id = ?", (player_id, match_id))
+
+    def get_pref(self, player_id: str, key: str, default: str) -> str:
+        with self.connect() as conn:
+            row = conn.execute("SELECT value FROM player_prefs WHERE player_id = ? AND key = ?",
+                               (player_id, key)).fetchone()
+        return row["value"] if row else default
+
+    def set_pref(self, conn: sqlite3.Connection, player_id: str, key: str, value: str) -> None:
+        conn.execute("INSERT INTO player_prefs VALUES (?,?,?) ON CONFLICT(player_id, key) DO UPDATE SET "
+                     "value = excluded.value", (player_id, key, value))
 
     def payments(self, campaign_id: str) -> dict[str, dict]:
         with self.connect() as conn:

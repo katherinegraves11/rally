@@ -54,6 +54,8 @@ def _back(pid: str, path: str = "", msg: str = "", err: str = "") -> RedirectRes
 
 
 def _page(request: Request, name: str, **ctx) -> HTMLResponse:
+    if ctx.get("pid"):
+        ctx.setdefault("unread", side.unread_count(ctx["pid"]))
     ctx.update(request=request, msg=request.query_params.get("m"), err=request.query_params.get("err"),
                dashboard_url=DASHBOARD_URL, live=_engine.llm.live, parser=_engine.llm.label)
     return templates.TemplateResponse(request, name, ctx)
@@ -299,9 +301,51 @@ def report_chat(pid: str, match_id: str, msg_id: int):
     return _back(pid, f"/game/{match_id}", msg="Reported. The club will review it.")
 
 
+@app.get("/p/{pid}/alerts", response_class=HTMLResponse)
+def alerts(request: Request, pid: str):
+    with _lock:
+        _ensure()
+        try:
+            data = side.home(pid)
+            items = side.notifications(pid)
+            unread = sum(1 for n in items if n["unread"])
+            side.mark_all_read(pid)          # opening the tab marks them read (still highlighted this once)
+        except PlayerError:
+            return RedirectResponse("/", status_code=303)
+        version = side.version(pid)
+    return _page(request, "alerts.html", pid=pid, tab="alerts", version=version, items=items, unread=0,
+                 new_count=unread, chat_texts=side.chat_texts_on(pid),
+                 **{k: data[k] for k in ("profile", "short_name", "club", "now_label", "provider_ok")})
+
+
+@app.post("/p/{pid}/alerts/chat-texts")
+def chat_texts(pid: str, on: str = Form(...)):
+    with _lock:
+        _ensure()
+        try:
+            side.set_chat_texts(pid, on == "1")
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, "/alerts", err=str(exc))
+    return _back(pid, "/alerts", msg="Chat texts on" if on == "1" else "Chat texts off")
+
+
+@app.post("/p/{pid}/game/{match_id}/mute")
+def mute(pid: str, match_id: str, on: str = Form(...)):
+    with _lock:
+        _ensure()
+        try:
+            side.set_mute(pid, match_id, on == "1")
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, f"/game/{match_id}", err=str(exc))
+    return _back(pid, f"/game/{match_id}", msg="Chat muted: no alerts from this game" if on == "1" else "Chat alerts on")
+
+
 @app.get("/api/p/{pid}/version")
 def version(pid: str):
     with _lock:
         _ensure()
         _engine.refresh()
-        return JSONResponse({"version": side.version(pid)})
+        latest = side.latest_unread(pid)
+        return JSONResponse({"version": side.version(pid), "unread": side.unread_count(pid),
+                             "latest": {"title": latest["title"], "body": latest["body"], "link": latest["link"],
+                                        "key": latest["key"]} if latest else None})

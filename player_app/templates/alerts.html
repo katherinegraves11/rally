@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Rally · alerts{% endblock %}
+{% block main %}
+<div class="hello">
+  <h1>Alerts</h1>
+  <p>{% if new_count %}{{ new_count }} new{% else %}You're all caught up{% endif %}</p>
+</div>
+
+<div class="card" id="device-alerts" style="display:none">
+  <div class="eyebrow">ALERTS ON THIS DEVICE</div>
+  <div class="meta" id="device-text">Get a pop-up when there's a new invite, answer or chat message, even when Rally is in another tab.</div>
+  <div class="btns"><button class="btn primary" id="device-btn" type="button">Turn on alerts</button></div>
+</div>
+
+{% if items %}
+<div class="list">
+  {% for n in items %}
+  <a class="alert {{ 'unread' if n.unread else '' }}" href="{{ n.link }}">
+    <span class="ic">{{ n.icon }}</span>
+    <span class="grow"><div class="t">{{ n.title }}</div><div class="b">{{ n.body }}</div>
+      <div class="w">{{ n.when }}{% if n.texted %} · also sent by text (simulated){% endif %}{% if n.unread %} · new{% endif %}</div></span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty"><div class="big">Nothing yet</div>Invites, answers to your requests and messages from your teammates will show up here.</div>
+{% endif %}
+
+<div class="section-title">Texts about chat</div>
+<div class="card">
+  <div class="meta">When a teammate writes in a game chat, we can also send you a short text (never the message itself; at most one every 30 minutes per game, and not at night).</div>
+  <form method="post" action="/p/{{ pid }}/alerts/chat-texts" class="btns">
+    {% if chat_texts %}<input type="hidden" name="on" value="0"><button class="btn ghost">Turn chat texts off</button>
+    {% else %}<input type="hidden" name="on" value="1"><button class="btn primary">Turn chat texts on</button>{% endif %}
+  </form>
+  <div class="hint">To silence one game, open it and tap "Mute this chat".</div>
+</div>
+
+<script>
+  (function () {
+    var box = document.getElementById("device-alerts"), btn = document.getElementById("device-btn"),
+        txt = document.getElementById("device-text");
+    if (!("Notification" in window)) return;
+    box.style.display = "";
+    function show() {
+      if (Notification.permission === "granted") { txt.textContent = "Alerts are on for this device."; btn.style.display = "none"; }
+      else if (Notification.permission === "denied") { txt.textContent = "Alerts are blocked in this browser's settings. You'll still see them here."; btn.style.display = "none"; }
+    }
+    show();
+    btn.onclick = function () { Notification.requestPermission().then(show); };
+  })();
+</script>
+{% endblock %}

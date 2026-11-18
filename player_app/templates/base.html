@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{% block title %}Rally{% endblock %}</title>
+  <title>{% if unread %}({{ unread }}) {% endif %}{% block title %}Rally{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -26,6 +26,7 @@
   {% if pid %}
   <nav class="tabs">
     <a href="/p/{{ pid }}" class="{{ 'on' if tab == 'home' else '' }}"><span class="i">●</span>Games</a>
+    <a href="/p/{{ pid }}/alerts" class="{{ 'on' if tab == 'alerts' else '' }}"><span class="i"><span style="position:relative;display:inline-block">🔔{% if unread %}<span class="badge">{{ unread }}</span>{% endif %}</span></span>Alerts</a>
     <a href="/p/{{ pid }}/settings" class="{{ 'on' if tab == 'settings' else '' }}"><span class="i">⚙︎</span>Settings</a>
   </nav>
   {% endif %}
@@ -33,6 +34,18 @@
 {% if pid and version %}
 <script>
   // Live updates: when the club approves an invite or something changes, reload (unless you're typing).
+  // Browser / phone alerts: if the player allowed them (Alerts tab), a new alert pops up as a system notification.
+  function notify(latest) {
+    try {
+      if (!latest || !("Notification" in window) || Notification.permission !== "granted") return;
+      var k = "rally-notified-{{ pid }}", last = localStorage.getItem(k);
+      if (last === latest.key) return;
+      localStorage.setItem(k, latest.key);
+      if (last === null) return;   // first visit on this device: don't replay old alerts
+      var n = new Notification("Rally · " + latest.title, { body: latest.body, tag: latest.key });
+      n.onclick = function () { window.focus(); location.href = latest.link; };
+    } catch (e) {}
+  }
   (function () {
     var v = "{{ version }}", busy = false;
     // While a tap is being processed (Rally may be asking Claude), don't reload and don't allow a double tap.
@@ -47,6 +60,7 @@
       var a = document.activeElement;
       if (a && (a.tagName === "INPUT" || a.tagName === "SELECT") && a.value) return;
       fetch("/api/p/{{ pid }}/version").then(function (r) { return r.json(); }).then(function (d) {
+        notify(d.latest);
         if (d.version !== v) location.replace(location.pathname);
       }).catch(function () {});
     }, 4000);

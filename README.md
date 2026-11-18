@@ -36,7 +36,8 @@ decides), solo invite (yes / no / free text, then book and pay your share), orga
 should we?", then choose who Rally may ask), empty-court group invite (counts, never names; booked only
 once all four pay), opt-in / preferences (times, channel, personal weekly limit, invites off), and a game page for booked
 players (address, who's playing, and a game chat only they can see, with reports reviewed by the club;
-phone numbers are never shared).
+phone numbers are never shared), plus an Alerts tab with an unread badge, optional browser alerts, and
+short simulated texts about new chat messages (never the message itself; mutable per game).
 Plan and rules: `docs/PLAYER_APP_ARCHITECTURE.md`. Tests: `tests/test_player_side.py`.
 
 Other entry points:

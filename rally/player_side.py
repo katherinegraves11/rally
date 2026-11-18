@@ -882,7 +882,8 @@ class PlayerSide:
                 "day": day_label(m.start), "level": level_label(m.level) if m.level is not None else "mixed",
                 "team": team, "spots": f"{len(m.player_ids)} of {m.capacity}", "messages": msgs,
                 "chat_open": open_, "chat_closes": time_label(m.end + timedelta(hours=policy.club.chat_open_hours_after)),
-                "started": m.start <= now, "price": price_per_player(policy)}
+                "started": m.start <= now, "price": price_per_player(policy),
+                "muted": match_id in self.e.storage.muted(pid)}
 
     def post_chat(self, pid: str, match_id: str, body: str) -> None:
         m = self._booked_match(pid, match_id)
@@ -897,6 +898,39 @@ class PlayerSide:
             msg_id = self.e.storage.add_chat(conn, match_id, pid, body, self.e.now())
         # the log records that a message was posted, never what it said
         self._log("GAME_CHAT_POSTED", pid, {"match_id": match_id, "msg_id": msg_id, "length": len(body)})
+        self._chat_texts(pid, m)
+
+    CHAT_TEXT_GAP = timedelta(minutes=30)
+
+    def _chat_texts(self, author: str, m) -> None:
+        """Simulated text to teammates about a new chat message: never the message itself, at most one per game
+        every 30 minutes, not in the club's quiet hours, not if muted or switched off, only if invites are on."""
+        from .coordinator import Coordinator
+        now, policy = self.e.now(), self.e.policy()
+        if Coordinator._in_quiet_hours(policy, now):
+            return
+        profiles = self.e.profiles()
+        who = short_name(profiles[author].name) if author in profiles else "A teammate"
+        court = f"Court {m.court_id[1:]}"
+        tag = f"chat:{m.match_id}:"
+        latest = self.e.storage.chat(m.match_id)[-1]["msg_id"]
+        for t in m.player_ids:
+            p = profiles.get(t)
+            if t == author or p is None or p.opt_in_status != "opted_in" or not p.opt_in_channel:
+                continue
+            if self.e.storage.get_pref(t, "chat_texts", "on") != "on" or m.match_id in self.e.storage.muted(t):
+                continue
+            recent = [x for x in self.e.storage.messages(player_id=t) if x["kind"] == "chat_alert"
+                      and (x["invite_id"] or "").startswith(tag)
+                      and now - datetime.fromisoformat(x["sim_ts"]) < self.CHAT_TEXT_GAP]
+            if recent:
+                continue
+            with self.e.storage.connect() as conn:
+                self.e.messaging.send(conn, campaign_id=None, invite_id=f"{tag}{latest}", player_id=t,
+                                      channel=p.opt_in_channel,
+                                      kind="chat_alert", now=now,
+                                      body=f"Rally: new message from {who} in your {court} game chat. "
+                                           "Open the app to read it.")
 
     def report_chat(self, pid: str, match_id: str, msg_id: int) -> None:
         self._booked_match(pid, match_id)
@@ -932,3 +966,103 @@ class PlayerSide:
         self.e._log("GAME_CHAT_REVIEWED", actor=reviewer, tool="game_chat",
                     detail={"msg_id": msg_id, "match_id": c["match_id"], "decision": status})
         return "Hidden for everyone in the game." if status == "hidden" else "Kept; the report is closed."
+
+
+    # ---- notifications ------------------------------------------------------------------------------
+    MESSAGE_TITLES = {
+        "invite": "New game invite", "booking_link": "You're in: book and pay your share",
+        "booking_link_group": "Your group is set: book and pay", "waitlist": "You're on the waitlist",
+        "seat_gone": "That spot was filled", "court_gone": "That game is off", "opt_out_ack": "Invites turned off",
+        "request_approved": "Good news: you can join", "request_declined": "Your request was answered",
+        "request_acknowledged": "The club noted your interest",
+    }
+
+    def notifications(self, pid: str) -> list[dict]:
+        """Everything this player should hear about, newest first. Built from what already happened (messages,
+        chat, requests, the event log), so it can't drift out of sync."""
+        self._profile(pid)
+        now = self.e.now()
+        profiles = self.e.profiles()
+        seen = self.e.storage.seen_keys(pid)
+        items: list[dict] = []
+
+        def add(key, ts, icon, title, body, link, texted=False):
+            items.append({"key": key, "ts": ts, "icon": icon, "title": title, "body": body, "link": link,
+                          "texted": texted, "unread": key not in seen,
+                          "when": time_label(datetime.fromisoformat(ts))})
+
+        texted_chats = {x["invite_id"] for x in self.e.storage.messages(player_id=pid) if x["kind"] == "chat_alert"}
+        for msg in self.e.storage.messages(player_id=pid):
+            if msg["direction"] != "out" or msg["kind"] == "chat_alert":
+                continue
+            title = self.MESSAGE_TITLES.get(msg["kind"], "Message from the club")
+            body = msg["body"] if len(msg["body"]) <= 160 else msg["body"][:157] + "…"
+            add(f"m:{msg['message_id']}", msg["sim_ts"], "📨", title, body, f"/p/{pid}", texted=True)
+
+        # chat from teammates in games this player is booked in (not muted, not hidden)
+        if self.e.provider_status == "ok":
+            muted = self.e.storage.muted(pid)
+            for m in self.e.provider.all_matches():
+                if pid not in m.player_ids or m.match_id in muted:
+                    continue
+                for c in self.e.storage.chat(m.match_id):
+                    if c["player_id"] == pid or c["status"] == "hidden":
+                        continue
+                    who = short_name(profiles[c["player_id"]].name) if c["player_id"] in profiles else "A teammate"
+                    body = c["body"] if len(c["body"]) <= 120 else c["body"][:117] + "…"
+                    add(f"c:{c['msg_id']}", c["sim_ts"], "💬", f"{who} · Court {m.court_id[1:]} chat", body,
+                        f"/p/{pid}/game/{m.match_id}#chat",
+                        texted=f"chat:{m.match_id}:{c['msg_id']}" in texted_chats)
+
+        # organiser: requests to join and Rally's progress on their game
+        mine = set(self.e.organized_by(pid))
+        if mine:
+            for r in self.e.storage.requests():
+                if r["kind"] == "organiser" and r["target_id"] in mine and r["player_id"] in profiles:
+                    p = profiles[r["player_id"]]
+                    add(f"r:{r['request_id']}", r["created_at"], "🙋", f"{short_name(p.name)} asked to join your game",
+                        f"Level {level_label(p.level)}" + (f" · “{r['note']}”" if r["note"] else ""), f"/p/{pid}")
+            camps = {c["campaign_id"]: c for c in self.e.storage.campaigns()
+                     if c["opportunity_id"] in {f"MP-{x}" for x in mine}}
+            for ev in self.e.storage.events():
+                if ev["campaign_id"] not in camps:
+                    continue
+                d = ev["detail"] or {}
+                who = short_name(profiles[d["player_id"]].name) if d.get("player_id") in profiles else "A player"
+                if ev["event_type"] == "INVITE_SENT":
+                    add(f"e:{ev['event_id']}", ev["sim_ts"], "📣", f"Rally asked {who}", "Waiting for their answer.",
+                        f"/p/{pid}")
+                elif ev["event_type"] == "REPLY_DECLINED":
+                    add(f"e:{ev['event_id']}", ev["sim_ts"], "↩️", f"{who} can't make it",
+                        "Rally is asking the next player you chose, if there is one.", f"/p/{pid}")
+                elif ev["event_type"] == "STATE_CHANGED" and ev["to_state"] == State.CONFIRMED.value:
+                    add(f"e:{ev['event_id']}", ev["sim_ts"], "🎾", "Your game is full",
+                        "The new player booked and paid.", f"/p/{pid}")
+        return sorted(items, key=lambda x: (x["ts"], x["key"]), reverse=True)
+
+    def unread_count(self, pid: str) -> int:
+        return sum(1 for n in self.notifications(pid) if n["unread"])
+
+    def latest_unread(self, pid: str) -> dict | None:
+        return next((n for n in self.notifications(pid) if n["unread"]), None)
+
+    def mark_all_read(self, pid: str) -> None:
+        keys = [n["key"] for n in self.notifications(pid) if n["unread"]]
+        if keys:
+            with self.e.storage.connect() as conn:
+                self.e.storage.mark_seen(conn, pid, keys)
+
+    def set_chat_texts(self, pid: str, on: bool) -> None:
+        self._profile(pid)
+        with self.e.storage.connect() as conn:
+            self.e.storage.set_pref(conn, pid, "chat_texts", "on" if on else "off")
+        self._log("PLAYER_SETTINGS_UPDATED", pid, {"chat_texts": "on" if on else "off"})
+
+    def chat_texts_on(self, pid: str) -> bool:
+        return self.e.storage.get_pref(pid, "chat_texts", "on") == "on"
+
+    def set_mute(self, pid: str, match_id: str, on: bool) -> None:
+        self._booked_match(pid, match_id)
+        with self.e.storage.connect() as conn:
+            self.e.storage.set_mute(conn, pid, match_id, on)
+        self._log("GAME_CHAT_MUTED" if on else "GAME_CHAT_UNMUTED", pid, {"match_id": match_id})

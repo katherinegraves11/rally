@@ -93,6 +93,24 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
      as plain text.
    - The audit log records that a message was posted or reported, not what it said.
 
+8. **Notifications (added 2026-11-17, Katie's call).** Players shouldn't have to open the app to find
+   out something happened.
+   - **Alerts tab** with an unread badge (also in the browser tab title). It lists, newest first:
+     new invites and every club message about them (booking link, waitlist, game off), answers to
+     "ask about this game", new game-chat messages from teammates, and for organisers: someone
+     asked to join, Rally asked a player, a player said no, and "your game is full". Opening the
+     tab marks them read. Each alert links to where you act.
+   - **Phone / browser alerts:** the player can switch on browser notifications; while Rally is
+     open (or in a background tab) a new alert pops up as a system notification. Real push to a
+     closed phone app needs the club's app or Playtomic's, which is out of scope.
+   - **Text alerts for chat (simulated):** invites already arrive by text or WhatsApp. For chat,
+     a teammate's message also sends a short simulated text ("new message in your Court 2 game
+     chat"), at most one per game every 30 minutes, never in the club's quiet hours, and never
+     with the message itself. Players can switch chat texts off in Settings, or mute one game's
+     chat from its page (muted chats don't alert at all).
+   - Read state is per player. Alerts are built from what already happened (messages, chat,
+     requests, the event log), so nothing new can drift out of sync.
+
 ## Engine additions (`rally/`)
 
 | Change | Where | Rule it keeps |
@@ -109,6 +127,7 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
 | Self-join: fresh booking-system check, then the booking system lists them as paid | `player_side.py` | No count without the booking system |
 | `join_requests` table; club and organiser decisions; booking only after approval + payment | `storage.py`, `player_side.py`, `app.py` | A human approves; players never contact each other directly |
 | `game_chat` table; access only for booked players of that game; reports reviewed by the club | `storage.py`, `player_side.py`, `app.py` | Players never see each other's contact details |
+| Alerts feed derived from messages/chat/requests/events; `notification_seen`, `chat_mutes`, chat-text setting | `storage.py`, `player_side.py` | Quiet hours; no chat text content in texts or logs |
 
 Organisers: `data/match_organizers.csv` (fictional) names the organiser of each private match.
 
@@ -122,5 +141,5 @@ Organisers: `data/match_organizers.csv` (fictional) names the organiser of each 
 ## Not in this build
 
 Real sign-in (the demo picks a fictional player), real payments, real SMS/WhatsApp, sharing phone
-numbers between players (chat is used instead), push notifications for chat, browsing every
+numbers between players (chat is used instead), push to a closed phone app (browser alerts and simulated texts instead), browsing every
 open match at the club (that is Playtomic's job; "I'm free" shows only games that fit), push notifications.
