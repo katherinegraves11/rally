@@ -165,6 +165,14 @@ class MockBookingProvider:
             conn.execute("UPDATE matches SET player_ids = ?, payment_status = ? WHERE match_id = ?",
                          (json.dumps(players), payment_status, match_id))
 
+    def create_player_booking(self, match_id: str, court_id: str, start: datetime, end: datetime,
+                              player_ids: list[str], level: float, note: str) -> None:
+        """A player booked and paid for a court in the club's booking app (simulated)."""
+        with self._conn() as conn:
+            conn.execute("INSERT INTO matches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (match_id, court_id, start.isoformat(), end.isoformat(), "private", level,
+                          json.dumps(player_ids), 1, 4, "confirmed", "paid", "[]", "player_app", note))
+
     def simulate_player_dropout(self, match_id: str, player_id: str, note: str) -> None:
         """A booked player cancelled: the provider frees their seat and records them as dropped out."""
         with self._conn() as conn:

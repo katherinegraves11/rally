@@ -77,6 +77,20 @@
   <div class="bubbles">{% for m in game.club_messages %}<div class="bubble {{ m.dir }}">{{ m.body }}<span class="ts">{{ m.ts }}</span></div>{% endfor %}</div>
 </details>
 {% endif %}
+{% if game.report_mode and game.reportable %}
+<details class="card" style="margin-top:12px">
+  <summary style="cursor:pointer;font-weight:700">Someone dropped out</summary>
+  {% if game.report_pending %}
+  <div class="status wait" style="margin-top:10px"><b>You told the club</b>They'll confirm it, then the spot opens and everyone is told.</div>
+  {% else %}
+  <div class="meta" style="margin-top:8px">{% if game.report_mode == 'now' %}You booked this game, so this takes effect right away: the spot opens, everyone is told, and you can ask Rally to find someone.{% else %}The club confirms it before anything changes.{% endif %}</div>
+  <form method="post" action="/p/{{ pid }}/game/{{ game.match_id }}/report-dropout" style="margin-top:10px">
+    <select name="who" aria-label="Who dropped out">{% for x in game.reportable %}<option value="{{ x.player_id }}">{{ x.name }}</option>{% endfor %}</select>
+    <div class="btns"><button class="btn {{ 'primary' if game.report_mode == 'now' else 'dark' }}">{{ 'Take them off the game' if game.report_mode == 'now' else 'Tell the club' }}</button></div>
+  </form>
+  {% endif %}
+</details>
+{% endif %}
 {% if game.can_drop %}
 <details class="card" style="margin-top:12px">
   <summary style="cursor:pointer;font-weight:700">I can't make it anymore</summary>

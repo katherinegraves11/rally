@@ -216,6 +216,28 @@
 {# ---- 4. Looking for a game ---- #}
 {{ free_card(not n_needs and not games) }}
 
+{# ---- Start a game: friends but no court ---- #}
+{% if start.slots %}
+<details class="card" id="start">
+  <summary style="cursor:pointer;list-style:none">
+    <div class="eyebrow">HAVE FRIENDS, NEED A 4TH?</div>
+    <div class="big" style="font-size:19px">Start a game ›</div>
+    <div class="meta">Book a court for your group and Rally finds the rest.</div>
+  </summary>
+  <form method="post" action="/p/{{ pid }}/start" style="margin-top:12px">
+    <span class="fact-k">When</span>
+    <select name="slot" aria-label="When">{% for s in start.slots %}<option value="{{ s.value }}">{{ s.label }}</option>{% endfor %}</select>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;margin-top:10px">
+      <span class="fact-k">Who's coming</span><span class="fact-k">Game level</span>
+      <select name="friends" aria-label="Who's coming"><option value="2">Me + 2 friends</option><option value="1">Me + 1 friend</option></select>
+      <select name="level" aria-label="Level">{% for l in start.levels %}<option value="{{ l }}" {{ 'selected' if l == start.my_level else '' }}>{{ '%.1f'|format(l) }}</option>{% endfor %}</select>
+    </div>
+    <div class="status off" style="margin-top:12px"><b>You pay the ${{ '%.0f'|format(start.court_fee) }} court fee now</b>Like booking in the club app; settle up with your friends yourselves. When Rally finds a player, they pay their ${{ start.share }} share and it comes back to you.</div>
+    <div class="btns"><button class="btn primary">Book court · ${{ '%.0f'|format(start.court_fee) }}</button></div>
+  </form>
+</details>
+{% endif %}
+
 {# ---- 5. Earlier ---- #}
 {% if past_cards %}
 <div class="section-title">Earlier</div>

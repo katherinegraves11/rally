@@ -297,6 +297,30 @@ def post_chat(pid: str, match_id: str, text: str = Form("")):
     return RedirectResponse(f"/p/{pid}/game/{match_id}#chat-end", status_code=303)
 
 
+@app.post("/p/{pid}/start")
+def start_game(pid: str, slot: str = Form(...), friends: int = Form(...), level: float = Form(...)):
+    with _lock:
+        _ensure()
+        try:
+            match_id = side.start_game(pid, slot, friends, level)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, err=str(exc))
+    return _back(pid, msg="Court booked. Next: tap Find someone for me on your game, and Rally fills the open spots.")
+
+
+@app.post("/p/{pid}/game/{match_id}/report-dropout")
+def report_dropout(pid: str, match_id: str, who: str = Form(...)):
+    with _lock:
+        _ensure()
+        try:
+            msg = side.report_dropout(pid, match_id, who)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, f"/game/{match_id}", err=str(exc))
+    if _engine.organizer_of(match_id) == pid:
+        return _back(pid, msg=msg + " Tap Find someone for me to fill the spot.")
+    return _back(pid, f"/game/{match_id}", msg=msg)
+
+
 @app.post("/p/{pid}/game/{match_id}/drop")
 def drop_out(pid: str, match_id: str):
     with _lock:

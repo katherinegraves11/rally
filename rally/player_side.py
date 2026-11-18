@@ -139,6 +139,7 @@ class PlayerSide:
             "games": self.games(pid),
             "provider_ok": self.e.provider_status == "ok",
             "free": self.free_status(pid),
+            "start": self.start_options(pid),
             "org_requests": self.pending_requests(organiser_id=pid) if self.e.organized_by(pid) else [],
         }
 
@@ -289,6 +290,8 @@ class PlayerSide:
         paid = set(self.e.storage.payments(cid))
         if opp.type == OpportunityType.MISSING_PLAYER or set(held) <= paid:
             self.e.simulate_provider_confirmation(cid, payment_status="paid")
+            if opp.type == OpportunityType.MISSING_PLAYER and opp.match_id:
+                self._credit_organiser(opp.match_id, pid, amount)
             return "Paid. The booking system now shows your booking; Rally checked it."
         self.e.refresh()
         return f"Paid. {len(paid)} of {len(held)} players have paid; the court is booked once everyone has."
@@ -762,7 +765,7 @@ class PlayerSide:
         """Requests the player made that are still worth showing (open, or decided in the last day)."""
         out = []
         for r in self.e.storage.requests(player_id=pid):
-            if r["status"] == "withdrawn" or r["kind"] in self.FILL_KINDS:
+            if r["status"] == "withdrawn" or r["kind"] in self.FILL_KINDS + ("dropout_club",):
                 continue
             info = self._target_info(r)
             if info is None or info["start"] <= self.e.now():
@@ -894,6 +897,8 @@ class PlayerSide:
                 self.e.storage.set_availability_status(conn, window["avail_id"], "joined")
         self._log("PLAYER_REQUEST_BOOKED", pid, {"request_id": request_id, "match_id": m.match_id,
                                                  "verified": verified, "simulated": True})
+        if verified:
+            self._credit_organiser(m.match_id, pid, price_per_player(self.e.policy()))
         self.e.refresh()
         return "You're in: booked and paid." if verified else "Your booking hasn't shown as paid yet."
 
@@ -920,9 +925,20 @@ class PlayerSide:
         m = self._booked_match(pid, match_id)
         policy, now = self.e.policy(), self.e.now()
         profiles = self.e.profiles()
-        team = [{"player_id": x, "name": "You" if x == pid else short_name(profiles[x].name),
-                 "level": level_label(profiles[x].level), "organiser": self.e.organizer_of(match_id) == x}
-                for x in m.player_ids if x in profiles]
+        organiser = self.e.organizer_of(match_id)
+        org_first = profiles[organiser].first_name if organiser in profiles else "the organiser"
+        team = [({"player_id": x, "name": "You" if x == pid else short_name(profiles[x].name),
+                  "level": level_label(profiles[x].level), "organiser": organiser == x, "guest": False}
+                 if x in profiles else
+                 {"player_id": x, "name": f"Guest of {'yours' if organiser == pid else org_first}",
+                  "level": "–", "organiser": False, "guest": True})
+                for x in m.player_ids]
+        if organiser == pid:
+            report_mode = "now"
+        elif m.kind == "club_open":
+            report_mode = "club"
+        else:
+            report_mode = None
         names = {x: ("You" if x == pid else short_name(profiles[x].name)) for x in m.player_ids if x in profiles}
         msgs = []
         for c in self.e.storage.chat(match_id):
@@ -944,7 +960,11 @@ class PlayerSide:
                 club_msgs += [{"dir": x["direction"], "body": x["body"],
                                "ts": time_label(datetime.fromisoformat(x["sim_ts"]))}
                               for x in self.e.storage.messages(c["campaign_id"], pid)]
-        return {"club_messages": club_msgs, "fill": self.fill_status(pid, m), "cancel": self.cancel_terms(pid, m),
+        pending_report = any(r["kind"] == "dropout_club" and r["status"] == "pending"
+                             for r in self.e.storage.requests(player_id=pid, target_id=match_id))
+        return {"report_mode": report_mode if m.start > now else None, "report_pending": pending_report,
+                "reportable": [x for x in team if x["player_id"] != pid],
+                "club_messages": club_msgs, "fill": self.fill_status(pid, m), "cancel": self.cancel_terms(pid, m),
                 "can_drop": m.start > now and self.e.organizer_of(match_id) != pid,
                 "open_spots": max(0, m.capacity - len(m.player_ids)),
                 "match_id": match_id, "court": f"Court {m.court_id[1:]}", "club": policy.club.name,
@@ -1045,6 +1065,7 @@ class PlayerSide:
         "seat_gone": "That spot was filled", "court_gone": "That game is off", "opt_out_ack": "Invites turned off",
         "request_approved": "Good news: you can join", "request_declined": "Your request was answered",
         "request_acknowledged": "The club noted your interest", "dropout_ack": "You've left the game",
+        "court_booked": "Court booked", "share_credited": "A new player paid their share",
     }
 
     def notifications(self, pid: str) -> list[dict]:
@@ -1255,3 +1276,147 @@ class PlayerSide:
                                                "rule": terms["rule"]}, opportunity_id=f"MP-{match_id}")
         self.e.refresh()
         return body
+
+
+    # ---- "Start a game": book a court for your group, then let Rally fill the open spots ------------
+    def start_options(self, pid: str) -> dict:
+        """Free courts in the next 24 hours (quiet hours first), at least an hour away so Rally has time."""
+        now, policy = self.e.now(), self.e.policy()
+        p = self._profile(pid)
+        thr = policy.schedule.off_peak_max_occupancy_pct
+        seen, slots = set(), []
+        if self.e.provider_status == "ok":
+            for day in (now.date(), (now + timedelta(days=1)).date()):
+                for r in self.e.court_grid(day):
+                    s = r["start"]
+                    if not r["status"].startswith("Empty") or s in seen:
+                        continue
+                    if not (now + timedelta(minutes=60) <= s <= now + timedelta(hours=24)):
+                        continue
+                    seen.add(s)
+                    slots.append({"value": f"{s.isoformat()}|{r['court'].split()[-1]}",
+                                  "label": f"{relative_day(s, now).capitalize()} {range_label(s, s + timedelta(minutes=policy.schedule.slot_minutes))}"
+                                           f" · {r['court']}" + (" · quiet" if r["typical_occupancy_pct"] < thr else ""),
+                                  "quiet": r["typical_occupancy_pct"] < thr, "start": s})
+        slots.sort(key=lambda x: (not x["quiet"], x["start"]))
+        fee = policy.club.court_price_per_hour_usd * policy.schedule.slot_minutes / 60
+        levels = [round(p.level + d / 10, 1) for d in range(-5, 6) if 1.0 <= p.level + d / 10 <= 7.0]
+        return {"slots": slots[:14], "court_fee": fee, "share": price_per_player(policy), "levels": levels,
+                "my_level": round(p.level, 1)}
+
+    def start_game(self, pid: str, slot: str, friends: int, level: float) -> str:
+        p = self._profile(pid)
+        if p.opt_in_status != "opted_in":
+            raise PlayerError("Turn invites on first, so the club and your new teammates can reach you.")
+        if friends not in (1, 2):
+            raise PlayerError("Choose 1 or 2 friends: Rally then finds the rest.")
+        opts = self.start_options(pid)
+        chosen = next((s for s in opts["slots"] if s["value"] == slot), None)
+        if chosen is None:
+            raise PlayerError("That court isn't free any more. Pick another time.")
+        policy, now = self.e.policy(), self.e.now()
+        start = chosen["start"]
+        end = start + timedelta(minutes=policy.schedule.slot_minutes)
+        court_id = f"C{slot.split('|')[1]}"
+        if self.e.provider.health() != "ok" or self.e.provider.bookings_at(court_id, start, end):
+            raise PlayerError("That court was just booked by someone else. Pick another time.")
+        if not 1.0 <= float(level) <= 7.0:
+            raise PlayerError("Pick a level for the game.")
+        match_id = f"B-PLAYER-{start:%Y%m%d-%H%M}-{court_id}"
+        guests = [f"GUEST-{match_id}-{i + 1}" for i in range(friends)]
+        fee = opts["court_fee"]
+        self.e.provider.create_player_booking(match_id, court_id, start, end, [pid] + guests, float(level),
+                                              f"Booked in the player app by {p.name} + {friends} guest(s)")
+        with self.e.storage.connect() as conn:
+            self.e.storage.add_player_booking(conn, match_id, pid, friends, fee, now)
+            self.e.messaging.send(conn, campaign_id=None, invite_id=None, player_id=pid, channel=p.opt_in_channel,
+                                  kind="court_booked", now=now,
+                                  body=f"Court {court_id[1:]} is booked for {range_label(start, end)} "
+                                       f"({relative_day(start, now)}). You paid the ${fee:.0f} court fee (simulated).")
+        self._log("PLAYER_BOOKED_COURT", pid, {"match_id": match_id, "court_fee_usd": fee, "guests": friends,
+                                               "simulated": True, "note": "organiser pays the court up front"})
+        self.e.refresh()
+        return match_id
+
+    # ---- "Someone dropped out" (the person who booked usually hears first) ---------------------------
+    def report_dropout(self, pid: str, match_id: str, who: str) -> str:
+        m = self._booked_match(pid, match_id)
+        now = self.e.now()
+        if who == pid or who not in m.player_ids:
+            raise PlayerError("Pick someone else who's booked in this game.")
+        if m.start <= now:
+            raise PlayerError("This game has already started.")
+        if self.e.organizer_of(match_id) == pid:
+            return self._apply_dropout(m, who, reported_by=f"player:{pid}")
+        if m.kind != "club_open":
+            raise PlayerError("Only the person who booked this game can change it.")
+        if any(r["kind"] == "dropout_club" and r["status"] == "pending"
+               for r in self.e.storage.requests(target_id=match_id)):
+            raise PlayerError("Someone already told the club. They'll confirm it soon.")
+        with self.e.storage.connect() as conn:
+            rid = self.e.storage.add_request(conn, pid, match_id, "dropout_club", who, now)
+        self._log("PLAYER_DROPOUT_REPORT", pid, {"request_id": rid, "match_id": match_id, "who": who,
+                                                 "goes_to": "club (confirms before anything changes)"},
+                  opportunity_id=f"MP-{match_id}")
+        return "Sent. The club will confirm it, then the spot opens and everyone is told."
+
+    def _apply_dropout(self, m, who: str, reported_by: str) -> str:
+        now = self.e.now()
+        profiles = self.e.profiles()
+        name = profiles[who].name if who in profiles else "A guest"
+        self.e.provider.simulate_player_dropout(m.match_id, who, f"{name} dropped out at {time_label(now)}")
+        if who in profiles:
+            with self.e.storage.connect() as conn:
+                self.e.messaging.send(conn, campaign_id=None, invite_id=None, player_id=who,
+                                      channel=profiles[who].opt_in_channel, kind="dropout_ack", now=now,
+                                      body=f"You've been taken off the game on Court {m.court_id[1:]}, "
+                                           f"{range_label(m.start, m.end)}, after you let them know you can't make it.")
+        self.e._log("PLAYER_DROPPED_OUT", actor=reported_by, tool="player_app",
+                    detail={"player_id": who, "match_id": m.match_id, "reported_by": reported_by,
+                            "effect": "seat freed in the booking system; teammates alerted"},
+                    opportunity_id=f"MP-{m.match_id}")
+        self.e.refresh()
+        return f"{name.split()[0] if who in profiles else 'Your guest'} is off the game and everyone has been told."
+
+    def decide_dropout_report(self, request_id: int, decision: str, decided_by: str) -> str:
+        r = self.e.storage.get_request(request_id)
+        if r is None or r["kind"] != "dropout_club" or r["status"] != "pending":
+            raise PlayerError("That report has already been handled.")
+        m = self.e.provider.get_match(r["target_id"])
+        reporter = self._profile(r["player_id"])
+        now = self.e.now()
+        if decision == "confirm":
+            if m is None or r["note"] not in m.player_ids:
+                raise PlayerError("That player isn't in the game any more.")
+            self._apply_dropout(m, r["note"], reported_by=decided_by)
+            status, body = "approved", (f"Thanks {reporter.first_name}: the club confirmed the dropout. The spot is "
+                                        "open and Rally will help fill it.")
+        elif decision == "decline":
+            status, body = "declined", (f"Thanks {reporter.first_name}. The club checked and the booking stays "
+                                        "as it is.")
+        else:
+            raise PlayerError("Choose confirm or decline.")
+        with self.e.storage.connect() as conn:
+            self.e.storage.set_request(conn, request_id, status, now, decided_by=decided_by)
+            self.e.messaging.send(conn, campaign_id=None, invite_id=None, player_id=reporter.player_id,
+                                  channel=reporter.opt_in_channel, kind="request_" + status, body=body, now=now)
+        self.e._log("DROPOUT_REPORT_" + status.upper(), actor=decided_by, tool="player_requests",
+                    detail={"request_id": request_id, "match_id": r["target_id"], "who": r["note"]})
+        return "Dropout confirmed; the spot is open." if status == "approved" else "Report closed; nothing changed."
+
+
+    def _credit_organiser(self, match_id: str, payer: str, amount: float) -> None:
+        """Start a game: the organiser paid the whole court, so a new player's share goes back to them (simulated)."""
+        booking = self.e.storage.player_bookings().get(match_id)
+        if not booking or booking["organizer_id"] == payer:
+            return
+        org = self._profile(booking["organizer_id"])
+        who = short_name(self._profile(payer).name)
+        with self.e.storage.connect() as conn:
+            self.e.messaging.send(conn, campaign_id=None, invite_id=None, player_id=org.player_id,
+                                  channel=org.opt_in_channel, kind="share_credited", now=self.e.now(),
+                                  body=f"{who} joined your game and paid their ${amount:.0f} share; it has been "
+                                       "credited back to you (simulated).")
+        self.e._log("ORGANISER_CREDITED", actor="code", tool="player_app",
+                    detail={"match_id": match_id, "organiser": org.player_id, "from_player": payer,
+                            "amount_usd": amount, "simulated": True})

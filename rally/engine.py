@@ -101,11 +101,17 @@ class RallyEngine:
         with open(path, newline="", encoding="utf-8") as f:
             return {r["match_id"]: r["organizer_id"] for r in csv.DictReader(f)}
 
+    def _all_organizers(self) -> dict[str, str]:
+        """Fixture organisers plus players who booked a court in the player app (Start a game)."""
+        out = dict(self._organizers)
+        out.update({m: b["organizer_id"] for m, b in self.storage.player_bookings().items()})
+        return out
+
     def organizer_of(self, match_id: str) -> str | None:
-        return self._organizers.get(match_id)
+        return self._all_organizers().get(match_id)
 
     def organized_by(self, player_id: str) -> list[str]:
-        return [m for m, p in self._organizers.items() if p == player_id]
+        return [m for m, p in self._all_organizers().items() if p == player_id]
 
     def _seed(self) -> None:
         if self.storage.get_meta("sim_now"):

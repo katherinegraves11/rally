@@ -148,6 +148,25 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
     7. **"I'm free" for the whole week** (today plus six days), and it remembers the player's last
        window (or starts from their usual playing times).
 
+11. **Start a game, and report a dropout (added 2026-11-17, Katie: "the person who booked is the first
+    human to know").**
+    - **Start a game:** a player with friends but no court picks a time in the next 24 hours from the
+      courts the booking system shows free (quiet hours first), says how many friends are coming
+      ("me + 2", shown as guests), and books. **The organiser pays the full court up front** ($120 for
+      90 minutes, simulated), the Playtomic model where the booking owner is charged; teammates settle
+      up between themselves. Setting to revisit: a hold-then-pay model. The game becomes theirs to
+      organise, so "Find someone for me" fills the open spots; each new player pays their $30 share in
+      the app and it is credited back to the organiser (simulated, logged as `ORGANISER_CREDITED`), so
+      the club never collects more than the court fee.
+    - **Someone dropped out:** the organiser of a game (who usually hears first, often by text from a
+      friend who isn't on Rally) taps it on the game page and picks who. It applies at once (they own
+      the booking): the booking system frees the spot, teammates and the dropped player are alerted,
+      and the organiser goes straight to "Find someone for me". No late fee is charged this way; the
+      organiser and friend settle that themselves.
+    - **In a club open match**, any booked player can report that another player dropped out, but the
+      **club confirms it** on the dashboard before anything changes, so one player can't remove
+      another by mistake.
+
 ## Engine additions (`rally/`)
 
 | Change | Where | Rule it keeps |

@@ -38,6 +38,8 @@ once all four pay), opt-in / preferences (times, channel, personal weekly limit,
 players (address, who's playing, and a game chat only they can see, with reports reviewed by the club;
 phone numbers are never shared), plus an Alerts tab with an unread badge, optional browser alerts, and
 short simulated texts about new chat messages (never the message itself; mutable per game).
+Players with friends but no court can **Start a game** (book a court, Rally fills the open spots), and the
+person who booked can report **Someone dropped out** (in club open matches the club confirms it first).
 Plan and rules: `docs/PLAYER_APP_ARCHITECTURE.md`. Tests: `tests/test_player_side.py`.
 
 Other entry points:

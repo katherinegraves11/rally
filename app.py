@@ -358,8 +358,12 @@ def requests_panel() -> None:
         for r in reqs:
             with st.container(border=True):
                 c1, c2 = st.columns([3, 2])
-                what = {"empty_court": "is interested in the empty court",
-                        "fill_club": "is booked in, and asked you to find a 4th for"}.get(r["kind"], "asked to join")
+                if r["kind"] == "dropout_club":
+                    who = engine.profiles().get(r["note"])
+                    what = f"says **{who.name if who else 'a player'}** dropped out of"
+                else:
+                    what = {"empty_court": "is interested in the empty court",
+                            "fill_club": "is booked in, and asked you to find a 4th for"}.get(r["kind"], "asked to join")
                 c1.markdown(f"**{r['name']}** (level {r['player_level']}) {what} **{r['court']}, {r['when']}**"
                             + (f" · game level {r['level']}, {r['players']}" if r["kind"] != "empty_court" else ""))
                 if r["kind"] == "fill_club":
@@ -368,7 +372,7 @@ def requests_panel() -> None:
                         st.session_state["flash"] = ("requests", "success",
                                                      "Opened below under Players needed: approve who Rally asks.")
                         st.rerun()
-                if r["note"]:
+                if r["note"] and r["kind"] != "dropout_club":
                     c1.markdown(f"<span class='small'>Their note: “{r['note']}”</span>", unsafe_allow_html=True)
                 late = r["status"] == "pending" and r["waited_min"] > r["target_min"]
                 c1.markdown(f"<span class='small'>{'⏰ ' if late else ''}Waiting {r['waited_min']} min "
@@ -378,15 +382,19 @@ def requests_panel() -> None:
                 choices = ([("acknowledge", "👍 We'll let you know"), ("decline", "Not this time")]
                            if r["kind"] == "empty_court" else
                            [("acknowledge", "👍 On it"), ("decline", "We'll handle it at the desk")]
-                           if r["kind"] == "fill_club" else [("approve", "✅ Let them in"), ("decline", "Not this time")])
+                           if r["kind"] == "fill_club" else
+                           [("confirm", "✅ Confirm dropout"), ("decline", "Not true")]
+                           if r["kind"] == "dropout_club" else [("approve", "✅ Let them in"), ("decline", "Not this time")])
                 if r["status"] == "acknowledged":
                     choices = [c for c in choices if c[0] != "acknowledge"]
                 cols = c2.columns(len(choices))
                 for col, (decision, label) in zip(cols, choices):
                     if col.button(label, key=f"req_{r['request_id']}_{decision}", width="stretch",
-                                  type="primary" if decision in ("approve", "acknowledge") else "secondary"):
+                                  type="primary" if decision in ("approve", "acknowledge", "confirm") else "secondary"):
                         try:
-                            msg = side.decide_request(r["request_id"], decision, f"manager:{engine.MANAGER}")
+                            msg = (side.decide_dropout_report(r["request_id"], decision, f"manager:{engine.MANAGER}")
+                                   if r["kind"] == "dropout_club" else
+                                   side.decide_request(r["request_id"], decision, f"manager:{engine.MANAGER}"))
                             st.session_state["flash"] = ("requests", "success", msg)
                         except PlayerError as exc:
                             st.session_state["flash"] = ("requests", "error", str(exc))

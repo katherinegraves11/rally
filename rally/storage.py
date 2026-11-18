@@ -172,6 +172,14 @@ CREATE TABLE IF NOT EXISTS player_prefs (     -- small per-player switches (sepa
     PRIMARY KEY (player_id, key)
 );
 
+CREATE TABLE IF NOT EXISTS player_bookings (   -- courts booked from the player app ("Start a game")
+    match_id TEXT PRIMARY KEY,
+    organizer_id TEXT NOT NULL,
+    guests INTEGER NOT NULL,
+    court_fee_usd REAL NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS player_payments (
     campaign_id TEXT NOT NULL,
     player_id TEXT NOT NULL,
@@ -555,6 +563,14 @@ class Storage:
     def set_pref(self, conn: sqlite3.Connection, player_id: str, key: str, value: str) -> None:
         conn.execute("INSERT INTO player_prefs VALUES (?,?,?) ON CONFLICT(player_id, key) DO UPDATE SET "
                      "value = excluded.value", (player_id, key, value))
+
+    def add_player_booking(self, conn: sqlite3.Connection, match_id: str, organizer_id: str, guests: int,
+                           fee: float, now: datetime) -> None:
+        conn.execute("INSERT INTO player_bookings VALUES (?,?,?,?,?)", (match_id, organizer_id, guests, fee, _iso(now)))
+
+    def player_bookings(self) -> dict[str, dict]:
+        with self.connect() as conn:
+            return {r["match_id"]: dict(r) for r in conn.execute("SELECT * FROM player_bookings").fetchall()}
 
     def payments(self, campaign_id: str) -> dict[str, dict]:
         with self.connect() as conn:

@@ -559,3 +559,65 @@ def test_im_free_covers_the_week_and_remembers_the_window(engine, side):
     assert (w["start"].date() - engine.now().date()).days == 3
     again = side.free_options(AMA)
     assert (again["default_start"], again["default_end"]) == (18, 21)
+
+
+# ---- Start a game + report a dropout --------------------------------------------------------------------
+def test_start_a_game_books_the_court_and_hands_over_to_find_someone(engine, side):
+    opts = side.start_options(AMA)
+    assert opts["slots"] and opts["slots"][0]["quiet"]                     # quiet hours first
+    match_id = side.start_game(AMA, opts["slots"][0]["value"], 2, 2.2)
+    m = engine.provider.get_match(match_id)
+    assert m.player_ids[0] == AMA and len(m.player_ids) == 3 and m.payment_status == "paid"
+    assert engine.organizer_of(match_id) == AMA
+    assert any(ev["event_type"] == "PLAYER_BOOKED_COURT" for ev in engine.storage.events())
+    card = side.organiser_cards(AMA)[0]
+    assert card.stage == "ask"                                             # "Find someone for me" is next
+    side.organiser_decide(AMA, match_id, "rally")
+    assert side.organiser_candidates(AMA, match_id)                        # Rally can rank players for it
+    names = [x["name"] for x in side.game_page(AMA, match_id)["team"]]
+    assert names.count("Guest of yours") == 2
+
+
+def test_start_a_game_rejects_a_court_that_was_just_taken(engine, side):
+    slot = side.start_options(AMA)["slots"][0]["value"]
+    side.start_game(AMA, slot, 2, 2.2)
+    with pytest.raises(PlayerError):
+        side.start_game("P026", slot, 2, 2.3)
+
+
+def test_organiser_reports_a_friend_dropped_out_and_it_applies_at_once(engine, side):
+    msg = side.report_dropout(ORG, PRIV, "P014")                           # Elif: Ben texted her he can't come
+    assert "off the game" in msg
+    m = engine.provider.get_match(PRIV)
+    assert "P014" not in m.player_ids and "P014" in m.dropout_player_ids
+    assert side.latest_unread("P039")["title"] == "Ben T. can't make it anymore"
+    assert any(n["title"] == "You've left the game" for n in side.notifications("P014"))
+    assert not [e for e in engine.storage.events() if e["event_type"] == "LATE_CANCEL_FEE"]
+
+
+def test_in_a_club_match_the_club_confirms_a_reported_dropout(engine, side):
+    msg = side.report_dropout("P001", OPEN_C2, "P002")
+    assert "club will confirm" in msg
+    assert "P002" in engine.provider.get_match(OPEN_C2).player_ids        # nothing changes yet
+    with pytest.raises(PlayerError):
+        side.report_dropout("P003", OPEN_C2, "P002")                       # one report at a time
+    rid = side.pending_requests()[0]["request_id"]
+    side.decide_dropout_report(rid, "confirm", "manager:test")
+    assert "P002" not in engine.provider.get_match(OPEN_C2).player_ids
+
+
+def test_a_non_organiser_cannot_change_a_private_booking(engine, side):
+    with pytest.raises(PlayerError):
+        side.report_dropout("P014", PRIV, "P039")
+
+
+def test_new_player_share_is_credited_back_to_the_organiser(engine, side):
+    match_id = side.start_game(AMA, side.start_options(AMA)["slots"][0]["value"], 2, 2.2)
+    side.organiser_decide(AMA, match_id, "rally")
+    first = side.organiser_candidates(AMA, match_id)[0]["player_id"]
+    cid = side.organiser_approve(AMA, match_id, [first])
+    side.reply(first, f"{cid}:{first}", "yes")
+    side.pay(first, f"{cid}:{first}")
+    credits = [e for e in engine.storage.events() if e["event_type"] == "ORGANISER_CREDITED"]
+    assert len(credits) == 1 and credits[0]["detail"]["amount_usd"] == 30
+    assert any(n["title"] == "A new player paid their share" for n in side.notifications(AMA))
