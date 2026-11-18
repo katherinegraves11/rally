@@ -141,6 +141,18 @@ CREATE TABLE IF NOT EXISTS join_requests (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_open_request ON join_requests(player_id, target_id)
     WHERE status IN ('pending', 'approved', 'acknowledged');
 
+CREATE TABLE IF NOT EXISTS game_chat (
+    msg_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    sim_ts TEXT NOT NULL,
+    status TEXT NOT NULL,            -- visible | reported | hidden | kept
+    reported_by TEXT,
+    reported_at TEXT,
+    reviewed_by TEXT
+);
+
 CREATE TABLE IF NOT EXISTS player_payments (
     campaign_id TEXT NOT NULL,
     player_id TEXT NOT NULL,
@@ -467,6 +479,34 @@ class Storage:
         with self.connect() as conn:
             row = conn.execute("SELECT * FROM join_requests WHERE request_id = ?", (request_id,)).fetchone()
         return dict(row) if row else None
+
+    def add_chat(self, conn: sqlite3.Connection, match_id: str, player_id: str, body: str, now: datetime) -> int:
+        cur = conn.execute("INSERT INTO game_chat (match_id, player_id, body, sim_ts, status) VALUES (?,?,?,?, 'visible')",
+                           (match_id, player_id, body, _iso(now)))
+        return int(cur.lastrowid)
+
+    def chat(self, match_id: str | None = None, status: str | None = None) -> list[dict]:
+        sql, args, where = "SELECT * FROM game_chat", [], []
+        if match_id:
+            where.append("match_id = ?"); args.append(match_id)
+        if status:
+            where.append("status = ?"); args.append(status)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        with self.connect() as conn:
+            return [dict(r) for r in conn.execute(sql + " ORDER BY msg_id", args).fetchall()]
+
+    def get_chat(self, msg_id: int) -> Optional[dict]:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM game_chat WHERE msg_id = ?", (msg_id,)).fetchone()
+        return dict(row) if row else None
+
+    def report_chat(self, conn: sqlite3.Connection, msg_id: int, reporter: str, now: datetime) -> None:
+        conn.execute("UPDATE game_chat SET status = 'reported', reported_by = ?, reported_at = ? WHERE msg_id = ?",
+                     (reporter, _iso(now), msg_id))
+
+    def review_chat(self, conn: sqlite3.Connection, msg_id: int, status: str, reviewer: str) -> None:
+        conn.execute("UPDATE game_chat SET status = ?, reviewed_by = ? WHERE msg_id = ?", (status, reviewer, msg_id))
 
     def payments(self, campaign_id: str) -> dict[str, dict]:
         with self.connect() as conn:

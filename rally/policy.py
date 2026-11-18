@@ -26,6 +26,8 @@ class ClubCfg(BaseModel):
     court_count: int
     court_price_per_hour_usd: float
     players_per_court: int = 4
+    address: str = ""          # shown on booked players' game page
+    chat_open_hours_after: float = 3.0   # game chat closes this long after the game ends
 
 
 class ScheduleCfg(BaseModel):

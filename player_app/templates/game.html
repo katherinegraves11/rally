@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Rally · {{ game.court }}{% endblock %}
+{% block main %}
+<p><a href="/p/{{ pid }}" class="muted">← Your games</a></p>
+<div class="card hero">
+  <div class="eyebrow">YOU'RE BOOKED · {{ game.court }}</div>
+  <div class="big">{{ game.when }}</div>
+  <div class="meta">{{ game.club }} · level {{ game.level }} · {{ game.spots }} players</div>
+  <div class="status" style="margin-top:12px"><b>Where</b>{{ game.address }}<div class="hint" style="margin-top:4px">Arrive 10 minutes early to warm up. Your court is {{ game.court }}.</div></div>
+</div>
+
+<div class="section-title">Who's playing</div>
+<div class="list">
+  {% for p in game.team %}
+  <div class="row"><span class="avatar">{{ 'Y' if p.name == 'You' else p.name[0] }}</span>
+    <span class="grow"><span class="name">{{ p.name }}</span><br><span class="sub">Level {{ p.level }}{% if p.organiser %} · organiser{% endif %}</span></span></div>
+  {% endfor %}
+</div>
+<p class="small-print" style="margin-top:8px">Phone numbers are never shared. Use the game chat to sort out anything before you play.</p>
+
+<div class="section-title" id="chat">Game chat</div>
+<div class="card">
+  {% if game.messages %}
+  <div class="bubbles" style="margin-top:0">
+    {% for m in game.messages %}
+    <div class="bubble {{ 'in' if m.mine else 'out' }}" style="{{ 'opacity:.6;font-style:italic' if m.hidden else '' }}">
+      {% if not m.mine %}<b style="display:block;font-size:12px">{{ m.name }}</b>{% endif %}{{ m.body }}
+      <span class="ts">{{ m.ts }}{% if m.reported_by_me %} · you reported this{% endif %}</span>
+      {% if m.can_report %}
+      <form method="post" action="/p/{{ pid }}/game/{{ game.match_id }}/report/{{ m.msg_id }}" style="display:inline">
+        <button class="report" title="Report this message to the club">Report</button></form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="muted">No messages yet. Say hi, or sort out who's bringing balls.</div>
+  {% endif %}
+  <div id="chat-end"></div>
+  {% if game.chat_open %}
+  <form method="post" action="/p/{{ pid }}/game/{{ game.match_id }}/chat" class="reply" style="margin-top:14px">
+    <input name="text" maxlength="500" placeholder="Message your teammates" autocomplete="off">
+    <button class="btn small dark">Send</button>
+  </form>
+  <div class="hint">Only the players booked in this game can see this chat. It closes at {{ game.chat_closes }}. Report anything that makes you uncomfortable and the club will review it.</div>
+  {% else %}
+  <div class="status off"><b>This chat has closed</b>Game chats close 3 hours after the game ends.</div>
+  {% endif %}
+</div>
+{% endblock %}

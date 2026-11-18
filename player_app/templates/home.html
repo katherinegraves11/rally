@@ -197,9 +197,9 @@
 <div class="section-title">Your games</div>
 <div class="list">
   {% for g in games %}
-  <div class="row"><span class="avatar" style="background:var(--ball);color:var(--ball-ink)">{{ g.court[-1] }}</span>
-    <span class="grow"><span class="name">{{ g.when }}</span><br><span class="sub">{{ g.court }} · {{ g.players }} players{% if g.organiser %} · you organise{% endif %}</span></span>
-    {% if g.via_rally %}<span class="pill green">via Rally</span>{% endif %}</div>
+  <a class="row" href="/p/{{ pid }}/game/{{ g.match_id }}"><span class="avatar" style="background:var(--ball);color:var(--ball-ink)">{{ g.court[-1] }}</span>
+    <span class="grow"><span class="name">{{ g.when }}</span><br><span class="sub">{{ g.court }} · {{ g.players }} players{% if g.organiser %} · you organise{% endif %} · <u>details & chat</u></span></span>
+    {% if g.via_rally %}<span class="pill green">via Rally</span>{% endif %}</a>
   {% endfor %}
 </div>
 {% endif %}

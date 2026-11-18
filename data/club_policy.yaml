@@ -3,7 +3,7 @@
 # Every value below is a PROVISIONAL demo setting from PRD section 8. Nothing here has been
 # approved by the team or by a club yet. Change a value and bump policy_version.
 
-policy_version: "0.1.1-provisional (2026-11-17)"
+policy_version: "0.1.2-provisional (2026-11-17)"
 status: provisional
 
 club:
@@ -13,6 +13,8 @@ club:
   court_count: 6
   court_price_per_hour_usd: 80     # illustrative only (PRD section 10), never a revenue claim
   players_per_court: 4
+  address: "250 Northpoint Avenue, Brooklyn, NY (fictional demo address)"   # added 0.1.2 (game page)
+  chat_open_hours_after: 3         # game chat closes 3 hours after the game ends (added 0.1.2)
 
 schedule:
   # Opening hours and off-peak windows come from data/occupancy_profile.csv

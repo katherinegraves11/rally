@@ -79,6 +79,20 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
      starts or fills. A human approval here is the only way past the level and lead-time rules,
      and every decision is logged with who made it.
 
+7. **Game page and team chat (added 2026-11-17, Katie's call: in-app chat instead of sharing phone
+   numbers, because it is safer).** Once a player is booked, each of their games opens a game page:
+   - **Where and when:** court, time, the club's address (fictional in the demo), "arrive 10 minutes
+     early".
+   - **Who's playing:** first name, last initial and level of everyone booked in that game. Names
+     appear only after booking (at the invite stage group invites still show counts only).
+   - **Game chat:** only the players booked in that game can read or post. It opens at booking and
+     closes 3 hours after the game ends. Phone numbers are never shown.
+   - **Safety:** any player can report a message; reported messages appear for the club on the
+     dashboard, which can hide them for everyone or keep them. Rally never reads chat to make
+     decisions (unlike invite replies, nothing said here changes a booking), and messages are shown
+     as plain text.
+   - The audit log records that a message was posted or reported, not what it said.
+
 ## Engine additions (`rally/`)
 
 | Change | Where | Rule it keeps |
@@ -94,6 +108,7 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
 | "Free then" ranking bonus (`ranking.free_bonus` in the policy) | `ranking.py`, `club_policy.yaml` | Transparent, rule-based ranking |
 | Self-join: fresh booking-system check, then the booking system lists them as paid | `player_side.py` | No count without the booking system |
 | `join_requests` table; club and organiser decisions; booking only after approval + payment | `storage.py`, `player_side.py`, `app.py` | A human approves; players never contact each other directly |
+| `game_chat` table; access only for booked players of that game; reports reviewed by the club | `storage.py`, `player_side.py`, `app.py` | Players never see each other's contact details |
 
 Organisers: `data/match_organizers.csv` (fictional) names the organiser of each private match.
 
@@ -106,5 +121,6 @@ Organisers: `data/match_organizers.csv` (fictional) names the organiser of each 
 
 ## Not in this build
 
-Real sign-in (the demo picks a fictional player), real payments, real SMS/WhatsApp, browsing every
+Real sign-in (the demo picks a fictional player), real payments, real SMS/WhatsApp, sharing phone
+numbers between players (chat is used instead), push notifications for chat, browsing every
 open match at the club (that is Playtomic's job; "I'm free" shows only games that fit), push notifications.

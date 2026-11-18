@@ -34,7 +34,9 @@ player's reply or payment shows up on the dashboard and in the audit log. It cov
 list for games that come up; for near-fits they can "ask about this game", and the club or organiser
 decides), solo invite (yes / no / free text, then book and pay your share), organiser dropout ("find your own, or
 should we?", then choose who Rally may ask), empty-court group invite (counts, never names; booked only
-once all four pay), and opt-in / preferences (times, channel, personal weekly limit, invites off).
+once all four pay), opt-in / preferences (times, channel, personal weekly limit, invites off), and a game page for booked
+players (address, who's playing, and a game chat only they can see, with reports reviewed by the club;
+phone numbers are never shared).
 Plan and rules: `docs/PLAYER_APP_ARCHITECTURE.md`. Tests: `tests/test_player_side.py`.
 
 Other entry points:

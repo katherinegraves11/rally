@@ -33,6 +33,8 @@ HERE = Path(__file__).resolve().parent
 app = FastAPI(title="Rally · player app", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
+# cache-busting: browsers reload the stylesheet whenever it changes
+templates.env.globals["css_v"] = int((HERE / "static" / "style.css").stat().st_mtime)
 DASHBOARD_URL = os.environ.get("RALLY_DASHBOARD_URL", "http://localhost:8517")
 
 _lock = threading.RLock()  # one engine, many request threads: serialise engine access
@@ -259,6 +261,42 @@ def organiser_decide_request(pid: str, request_id: int, decision: str = Form(...
         except (PlayerError, ValueError) as exc:
             return _back(pid, err=str(exc))
     return _back(pid, msg=msg)
+
+
+@app.get("/p/{pid}/game/{match_id}", response_class=HTMLResponse)
+def game_page(request: Request, pid: str, match_id: str):
+    with _lock:
+        _ensure()
+        try:
+            data = side.home(pid)
+            game = side.game_page(pid, match_id)
+        except PlayerError as exc:
+            return _back(pid, err=str(exc))
+        version = side.version(pid)
+    return _page(request, "game.html", pid=pid, tab="home", version=version, game=game,
+                 **{k: data[k] for k in ("profile", "short_name", "club", "now_label", "provider_ok")})
+
+
+@app.post("/p/{pid}/game/{match_id}/chat")
+def post_chat(pid: str, match_id: str, text: str = Form("")):
+    with _lock:
+        _ensure()
+        try:
+            side.post_chat(pid, match_id, text)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, f"/game/{match_id}", err=str(exc))
+    return RedirectResponse(f"/p/{pid}/game/{match_id}#chat-end", status_code=303)
+
+
+@app.post("/p/{pid}/game/{match_id}/report/{msg_id}")
+def report_chat(pid: str, match_id: str, msg_id: int):
+    with _lock:
+        _ensure()
+        try:
+            side.report_chat(pid, match_id, msg_id)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, f"/game/{match_id}", err=str(exc))
+    return _back(pid, f"/game/{match_id}", msg="Reported. The club will review it.")
 
 
 @app.get("/api/p/{pid}/version")

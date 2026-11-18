@@ -314,3 +314,63 @@ def test_empty_court_interest_is_a_signal_not_a_booking(engine, side):
 def test_far_off_levels_are_not_shown(engine, side):
     side.post_free("P013", "today", 18, 23)                        # Aisha 3.5; Court 6 is level 2.5
     assert all(g["target_id"] != "M-OPEN-2030-C6" for g in side.games_around("P013"))
+
+
+# ---- game page and team chat ---------------------------------------------------------------------------
+OPEN_C2 = "M-OPEN-1730-C2"      # Daniela (P001), Kwame (P002), Sofia (P003) booked and paid
+
+
+def test_game_page_shows_address_and_teammates_only_to_booked_players(engine, side):
+    page = side.game_page("P001", OPEN_C2)
+    assert page["address"] and "fictional" in page["address"]
+    names = [p["name"] for p in page["team"]]
+    assert "You" in names and "Kwame A." in names                  # first name + initial, never a number
+    assert all("+1" not in str(p) for p in page["team"])
+    with pytest.raises(PlayerError):
+        side.game_page("P005", OPEN_C2)                            # not in the game
+    with pytest.raises(PlayerError):
+        side.game_page("P004", OPEN_C2)                            # Ethan dropped out
+
+
+def test_only_booked_players_can_chat_and_the_log_keeps_no_text(engine, side):
+    side.post_chat("P001", OPEN_C2, "Who's bringing balls?")
+    assert side.game_page("P002", OPEN_C2)["messages"][0]["body"] == "Who's bringing balls?"
+    with pytest.raises(PlayerError):
+        side.post_chat("P005", OPEN_C2, "hi")                      # outsider
+    with pytest.raises(PlayerError):
+        side.post_chat("P001", OPEN_C2, "x" * 501)
+    logged = [ev for ev in engine.storage.events() if ev["event_type"] == "GAME_CHAT_POSTED"]
+    assert logged and "balls" not in str(logged[0]["detail"])
+
+
+def test_a_new_booking_joins_the_chat(engine, side):
+    cid = approve(engine, MP_MAIN, n=1)
+    pid = engine.storage.get_campaign(cid)["approval"]["approved_player_ids"][0]
+    with pytest.raises(PlayerError):
+        side.game_page(pid, OPEN_C2)                               # invited is not booked
+    side.reply(pid, f"{cid}:{pid}", "yes")
+    with pytest.raises(PlayerError):
+        side.game_page(pid, OPEN_C2)                               # said yes, not paid yet
+    side.pay(pid, f"{cid}:{pid}")
+    assert any(p["name"] == "You" for p in side.game_page(pid, OPEN_C2)["team"])
+
+
+def test_report_goes_to_the_club_and_hide_applies_to_everyone(engine, side):
+    side.post_chat("P002", OPEN_C2, "something rude")
+    msg_id = side.game_page("P001", OPEN_C2)["messages"][0]["msg_id"]
+    with pytest.raises(PlayerError):
+        side.report_chat("P002", OPEN_C2, msg_id)                  # can't report your own message
+    side.report_chat("P001", OPEN_C2, msg_id)
+    assert [r["msg_id"] for r in side.reported_chat()] == [msg_id]
+    side.review_chat(msg_id, "hide", "manager:test")
+    for pid in ("P001", "P002", "P003"):
+        m = side.game_page(pid, OPEN_C2)["messages"][0]
+        assert m["hidden"] and "rude" not in m["body"]
+    assert side.reported_chat() == []
+
+
+def test_chat_closes_after_the_game(engine, side):
+    engine.advance(int((engine.provider.get_match(OPEN_C2).end - engine.now()).total_seconds() // 60) + 3 * 60 + 5)
+    assert not side.game_page("P001", OPEN_C2)["chat_open"]
+    with pytest.raises(PlayerError):
+        side.post_chat("P001", OPEN_C2, "gg")

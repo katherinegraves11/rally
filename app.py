@@ -316,6 +316,34 @@ def header(status: str, mp_views: list[OpportunityView], ec_views: list[Opportun
         f"{sent} invite{'s' if sent != 1 else ''} sent · {optouts} opt-out{'s' if optouts != 1 else ''} "
         f"<span class='small'>(simulated demo, not real results)</span></div>", unsafe_allow_html=True)
     requests_panel()
+    reported_chat_panel()
+
+
+def reported_chat_panel() -> None:
+    """Game-chat messages a player reported (player app). The club hides them for everyone or keeps them."""
+    flash("chat_reports")
+    reports = side.reported_chat()
+    if not reports:
+        return
+    with st.expander(f"🚩 Reported chat messages · {len(reports)}", expanded=True):
+        for r in reports:
+            with st.container(border=True):
+                c1, c2 = st.columns([3, 2])
+                c1.markdown(f"**{r['reporter']}** reported a message from **{r['author']}** in the chat for "
+                            f"**{r['game']}** (sent {r['ts']}):")
+                c1.code(r["body"], language=None, wrap_lines=True)
+                b1, b2 = c2.columns(2)
+                for col, decision, label, kind in ((b1, "hide", "🙈 Hide for everyone", "primary"),
+                                                   (b2, "keep", "Keep it", "secondary")):
+                    if col.button(label, key=f"chat_{r['msg_id']}_{decision}", width="stretch", type=kind):
+                        try:
+                            st.session_state["flash"] = ("chat_reports", "success",
+                                                         side.review_chat(r["msg_id"], decision,
+                                                                          f"manager:{engine.MANAGER}"))
+                        except PlayerError as exc:
+                            st.session_state["flash"] = ("chat_reports", "error", str(exc))
+                        st.rerun()
+        st.caption("Only reported messages are shown here; the club doesn't read game chats otherwise.")
 
 
 def requests_panel() -> None:

@@ -147,6 +147,7 @@ class PlayerSide:
         free = [(a["avail_id"], a["status"]) for a in self.e.storage.availability(self.e.now(), pid)]
         opps = sorted(r["opportunity_id"] for r in self.e.storage.opportunities() if r["active"])
         reqs = [(r["request_id"], r["status"]) for r in self.e.storage.requests()]
+        reqs.append(("chat", len(self.e.storage.chat()), sum(1 for c in self.e.storage.chat() if c["status"] != "visible")))
         raw = (f"{len(msgs)}|{camps}|{auth}|{self.e.storage.get_meta('sim_now')}|{self.e.provider_status}|"
                f"{free}|{opps}|{reqs}")
         return hashlib.sha1(raw.encode()).hexdigest()[:12]
@@ -838,3 +839,96 @@ class PlayerSide:
                                                  "verified": verified, "simulated": True})
         self.e.refresh()
         return "You're in: booked and paid." if verified else "Your booking hasn't shown as paid yet."
+
+
+    # ---- game page and team chat (booked players only) ----------------------------------------------
+    CHAT_MAX = 500
+
+    def _booked_match(self, pid: str, match_id: str):
+        """The match, if this player is booked and paid in it; otherwise PlayerError. Chat and teammates are
+        only for players actually booked in the game."""
+        if self.e.provider_status != "ok":
+            raise PlayerError("The booking system isn't answering right now, so we can't open this game.")
+        m = self.e.provider.get_match(match_id)
+        required = self.e.policy().booking.required_payment_status
+        if m is None or pid not in m.player_ids or m.payment_status != required:
+            raise PlayerError("This game page is only for players booked in the game.")
+        return m
+
+    def chat_open(self, m) -> bool:
+        hours = self.e.policy().club.chat_open_hours_after
+        return self.e.now() <= m.end + timedelta(hours=hours)
+
+    def game_page(self, pid: str, match_id: str) -> dict:
+        m = self._booked_match(pid, match_id)
+        policy, now = self.e.policy(), self.e.now()
+        profiles = self.e.profiles()
+        team = [{"player_id": x, "name": "You" if x == pid else short_name(profiles[x].name),
+                 "level": level_label(profiles[x].level), "organiser": self.e.organizer_of(match_id) == x}
+                for x in m.player_ids if x in profiles]
+        names = {x: ("You" if x == pid else short_name(profiles[x].name)) for x in m.player_ids if x in profiles}
+        msgs = []
+        for c in self.e.storage.chat(match_id):
+            hidden = c["status"] == "hidden"
+            msgs.append({"msg_id": c["msg_id"], "mine": c["player_id"] == pid,
+                         "name": names.get(c["player_id"], "A former player"),
+                         "body": "This message was hidden by the club." if hidden else c["body"],
+                         "hidden": hidden, "ts": time_label(datetime.fromisoformat(c["sim_ts"])),
+                         "reported_by_me": c["reported_by"] == pid and c["status"] == "reported",
+                         "can_report": c["player_id"] != pid and c["status"] == "visible"})
+        open_ = self.chat_open(m)
+        return {"match_id": match_id, "court": f"Court {m.court_id[1:]}", "club": policy.club.name,
+                "address": policy.club.address, "when": f"{relative_day(m.start, now)} · {range_label(m.start, m.end)}",
+                "day": day_label(m.start), "level": level_label(m.level) if m.level is not None else "mixed",
+                "team": team, "spots": f"{len(m.player_ids)} of {m.capacity}", "messages": msgs,
+                "chat_open": open_, "chat_closes": time_label(m.end + timedelta(hours=policy.club.chat_open_hours_after)),
+                "started": m.start <= now, "price": price_per_player(policy)}
+
+    def post_chat(self, pid: str, match_id: str, body: str) -> None:
+        m = self._booked_match(pid, match_id)
+        if not self.chat_open(m):
+            raise PlayerError("This game's chat has closed.")
+        body = (body or "").strip()
+        if not body:
+            raise PlayerError("Write a message first.")
+        if len(body) > self.CHAT_MAX:
+            raise PlayerError(f"Please keep messages under {self.CHAT_MAX} characters.")
+        with self.e.storage.connect() as conn:
+            msg_id = self.e.storage.add_chat(conn, match_id, pid, body, self.e.now())
+        # the log records that a message was posted, never what it said
+        self._log("GAME_CHAT_POSTED", pid, {"match_id": match_id, "msg_id": msg_id, "length": len(body)})
+
+    def report_chat(self, pid: str, match_id: str, msg_id: int) -> None:
+        self._booked_match(pid, match_id)
+        c = self.e.storage.get_chat(msg_id)
+        if c is None or c["match_id"] != match_id or c["player_id"] == pid or c["status"] != "visible":
+            raise PlayerError("That message can't be reported.")
+        with self.e.storage.connect() as conn:
+            self.e.storage.report_chat(conn, msg_id, pid, self.e.now())
+        self._log("GAME_CHAT_REPORTED", pid, {"match_id": match_id, "msg_id": msg_id, "author": c["player_id"]})
+
+    def reported_chat(self) -> list[dict]:
+        """For the club: reported messages waiting for review, with the game and both players."""
+        profiles = self.e.profiles()
+        out = []
+        for c in self.e.storage.chat(status="reported"):
+            m = self.e.provider.get_match(c["match_id"]) if self.e.provider_status == "ok" else None
+            out.append({"msg_id": c["msg_id"], "body": c["body"], "match_id": c["match_id"],
+                        "game": (f"Court {m.court_id[1:]}, {range_label(m.start, m.end)}" if m else c["match_id"]),
+                        "author": profiles[c["player_id"]].name if c["player_id"] in profiles else c["player_id"],
+                        "reporter": profiles[c["reported_by"]].name if c["reported_by"] in profiles else c["reported_by"],
+                        "ts": time_label(datetime.fromisoformat(c["sim_ts"]))})
+        return out
+
+    def review_chat(self, msg_id: int, decision: str, reviewer: str) -> str:
+        c = self.e.storage.get_chat(msg_id)
+        if c is None or c["status"] != "reported":
+            raise PlayerError("That message has already been reviewed.")
+        if decision not in ("hide", "keep"):
+            raise PlayerError("Choose hide or keep.")
+        status = "hidden" if decision == "hide" else "kept"
+        with self.e.storage.connect() as conn:
+            self.e.storage.review_chat(conn, msg_id, status, reviewer)
+        self.e._log("GAME_CHAT_REVIEWED", actor=reviewer, tool="game_chat",
+                    detail={"msg_id": msg_id, "match_id": c["match_id"], "decision": status})
+        return "Hidden for everyone in the game." if status == "hidden" else "Kept; the report is closed."

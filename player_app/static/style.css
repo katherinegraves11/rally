@@ -208,3 +208,7 @@ nav.tabs a.on { color: var(--court); background: #e9efe9; }
 
 .fact-k { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; font-weight: 700; }
 #free { margin-top: 12px; }
+
+.report { appearance: none; border: 0; background: none; font: inherit; font-size: 10.5px; text-decoration: underline;
+  opacity: .6; cursor: pointer; padding: 0; margin-left: 4px; color: inherit; }
+a.row { color: inherit; }
