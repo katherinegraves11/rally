@@ -23,7 +23,6 @@
           <button class="btn small primary">Join · ${{ g.price }}</button></form>
       </div>
       {% endfor %}
-      <div class="hint">Joining books and pays your share in the club's booking app (simulated). You're in once it shows as paid.</div>
     {% else %}
       <div class="status off"><b>Nothing open that fits right now</b>When a game at your level comes up in that time, you move up the list to be asked. The club still OKs every invite.</div>
     {% endif %}
@@ -60,11 +59,11 @@
 
 {% macro free_form() %}
 <form method="post" action="/p/{{ pid }}/free" style="margin-top:12px">
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 8px">
+  <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:4px 8px">
     <span class="fact-k">Day</span><span class="fact-k">From</span><span class="fact-k">To</span>
-    <select name="day" aria-label="Day"><option value="today">Today</option><option value="tomorrow">Tomorrow</option></select>
-    <select name="start" aria-label="From">{% for h in free.all_hours %}<option value="{{ h }}" {{ 'selected' if h == [free.now_hour + 1, 23]|min else '' }}>{{ hour(h) }}</option>{% endfor %}</select>
-    <select name="end" aria-label="To">{% for h in free.all_hours[1:] + [24] %}<option value="{{ h }}" {{ 'selected' if h == [free.now_hour + 4, 24]|min else '' }}>{{ hour(h) }}</option>{% endfor %}</select>
+    <select name="day" aria-label="Day">{% for d in free.days %}<option value="{{ d.value }}" {{ 'selected' if d.value == free.default_day else '' }}>{{ d.label }}</option>{% endfor %}</select>
+    <select name="start" aria-label="From">{% for h in free.all_hours %}<option value="{{ h }}" {{ 'selected' if h == free.default_start else '' }}>{{ hour(h) }}</option>{% endfor %}</select>
+    <select name="end" aria-label="To">{% for h in free.all_hours[1:] + [24] %}<option value="{{ h }}" {{ 'selected' if h == free.default_end else '' }}>{{ hour(h) }}</option>{% endfor %}</select>
   </div>
   <div class="btns"><button class="btn primary">I'm free</button></div>
 </form>
@@ -75,42 +74,26 @@
   <p>{{ now_label }} · {% if profile.opt_in_status == 'opted_in' %}invites on{% else %}invites off · <a href="/p/{{ pid }}/settings">turn on</a>{% endif %}</p>
 </div>
 
-{% if free.requests %}
-<div class="section-title">Your requests</div>
-{% for r in free.requests %}
+{% macro request_card(r) %}
 <div class="card {{ 'hero' if r.can_pay else '' }}">
   <div class="eyebrow">{{ 'YOU ASKED ABOUT' if r.kind != 'empty_court' else "YOU'RE INTERESTED IN" }} · {{ r.court }}</div>
   <div style="font-weight:800;font-size:17px">{{ r.when }}</div>
   <div class="status {{ 'ok' if r.status in ('approved', 'booked') else 'wait' if r.status in ('pending', 'acknowledged') else 'off' }}">
-    <b>{{ r.label }}</b>{% if r.status == 'approved' %}Book and pay your share; you're in once it shows as paid.{% elif r.status == 'pending' %}You'll get an answer here.{% elif r.status == 'acknowledged' %}If a group comes together, you'll get an invite.{% elif r.status == 'declined' %}You'll still hear about other games at your level.{% endif %}
+    <b>{{ r.label }}</b>{% if r.status == 'approved' %}Book and pay your share to take the spot.{% elif r.status == 'pending' %}{% if r.answer_by %}The club aims to answer by {{ r.answer_by }}. You'll get an alert.{% else %}You'll get an alert when they answer.{% endif %}{% elif r.status == 'acknowledged' %}If a group comes together, you'll get an invite.{% elif r.status == 'declined' %}You'll still hear about other games at your level.{% endif %}
     {% if r.note %}<div class="hint">Your note: “{{ r.note }}”</div>{% endif %}
   </div>
   {% if r.can_pay %}
   <form method="post" action="/p/{{ pid }}/request/{{ r.request_id }}/pay" class="btns"><button class="btn primary">Book and pay ${{ r.price }}</button></form>
-  <div class="hint">Simulated checkout. No real card is charged.</div>
   {% endif %}
   {% if r.status in ('pending', 'acknowledged') %}
   <form method="post" action="/p/{{ pid }}/request/{{ r.request_id }}/withdraw" style="margin-top:8px"><button class="btn small ghost" style="opacity:.75">Withdraw</button></form>
   {% endif %}
 </div>
-{% endfor %}
-{% endif %}
+{% endmacro %}
 
-{% if org_requests %}
-<div class="section-title">Players asking to join your game</div>
-{% for r in org_requests %}
+{% macro join_request_card(r) %}
 <div class="card hero">
-  <div class="eyebrow">REQUEST · {{ r.court }} · {{ r.when }}</div>
-  {% if r.kind == 'fill_organiser' %}
-  <div class="big" style="font-size:19px">{{ r.name }} asked you to find a 4th</div>
-  <div class="meta">Someone dropped out of your game ({{ r.players }}).</div>
-  {% if r.status == 'pending' %}
-  <form method="post" action="/p/{{ pid }}/request/{{ r.request_id }}/decide" class="btns">
-    <button class="btn ghost" name="decision" value="decline">I'll handle it</button>
-    <button class="btn primary" name="decision" value="find">Find someone for me</button>
-  </form>
-  {% else %}<div class="hint">You said you're on it. Use "Find someone for me" on your game below.</div>{% endif %}
-  {% else %}
+  <div class="eyebrow">ASKING TO JOIN · {{ r.court }} · {{ r.when }}</div>
   <div class="big" style="font-size:19px">{{ r.name }} · level {{ r.player_level }}</div>
   {% if r.note %}<div class="meta">“{{ r.note }}”</div>{% endif %}
   <div class="meta">Your game is level {{ r.level }} · {{ r.players }}</div>
@@ -118,19 +101,16 @@
     <button class="btn ghost" name="decision" value="decline">Not this time</button>
     <button class="btn primary" name="decision" value="approve">Let them in</button>
   </form>
-  <div class="hint">They only see your first name and last initial. If you say yes, they book and pay their own share.</div>
-  {% endif %}
 </div>
-{% endfor %}
-{% endif %}
+{% endmacro %}
 
-{# ---- Organiser: Journey A ---- #}
-{% for o in organiser_cards %}
-<div class="card {{ 'hero' if o.stage in ('ask', 'choose') else '' }}">
+{% macro org_card(o) %}
+<div class="card {{ 'hero' if o.stage in ('ask', 'choose') or o.fill_requests else '' }}">
   <div class="eyebrow">YOUR GAME · {{ o.court }}</div>
   <div class="big">{{ o.when }}</div>
   <div class="meta">Level {{ o.level }} · {{ o.players_in }} of {{ o.capacity }} players</div>
   <div class="seats">{% for i in range(o.capacity) %}<span class="seat {{ 'on' if i < o.players_in else '' }}"></span>{% endfor %}</div>
+  {% for f in o.fill_requests %}<div class="meta" style="margin-top:10px">🆘 <b>{{ f.name }}</b> asked you to find a 4th{% if f.note %}: “{{ f.note }}”{% endif %}</div>{% endfor %}
   <div class="status {{ 'ok' if o.stage == 'done' else 'wait' if o.stage in ('running',) else 'off' }}">
     <b>{{ o.headline }}</b>{{ o.detail }}
   </div>
@@ -139,7 +119,6 @@
     {% if o.stage == 'ask' %}<button class="btn ghost" name="mode" value="self">I'll find someone</button>{% endif %}
     <button class="btn primary" name="mode" value="rally">Find someone for me</button>
   </form>
-  {% if o.stage == 'ask' %}<div class="hint">If Rally helps, you choose exactly who it may ask. Nobody is messaged before that.</div>{% endif %}
   {% elif o.stage == 'choose' %}
   <div class="btns"><a class="btn primary" href="/p/{{ pid }}/organise/{{ o.match_id }}">Choose players</a></div>
   {% endif %}
@@ -147,13 +126,9 @@
   <div class="asked">{% for a in o.asked %}<div class="r"><span>{{ a.name }}</span><span class="muted">{{ a.status }}</span></div>{% endfor %}</div>
   {% endif %}
 </div>
-{% endfor %}
+{% endmacro %}
 
-{% if not open_cards and not games %}{{ free_card(true) }}{% endif %}
-
-{# ---- Invites: Journeys B and D ---- #}
-{% if open_cards %}<div class="section-title">Invites</div>{% endif %}
-{% for c in open_cards %}
+{% macro invite_card(c) %}
 <div class="card {{ 'hero' if c.status in ('invited', 'pay') else '' }}">
   <div class="eyebrow">{{ c.title|upper }}</div>
   <div class="big">{{ c.when }}</div>
@@ -167,17 +142,12 @@
   <div class="seats">{% for i in range(c.seats_total) %}<span class="seat {{ 'on' if i < c.seats_held else '' }}"></span>{% endfor %}</div>
   <div class="hint">{{ c.seats_held }} of {{ c.seats_total }} players in so far</div>
   {% endif %}
-  <div class="status {{ 'ok' if c.status in ('booked',) else 'wait' if c.status in ('waiting_group', 'paid_waiting', 'checking', 'with_club') else 'off' }}">
+  <div class="status {{ 'wait' if c.status in ('waiting_group', 'paid_waiting', 'checking', 'with_club') else 'off' }}">
     <b>{{ c.headline }}</b>{{ c.detail }}{% if c.reply_by %} Reply by {{ c.reply_by }}.{% endif %}
   </div>
-
   {% if c.can_pay %}
-  <form method="post" action="/p/{{ pid }}/pay/{{ c.invite_id }}" class="btns">
-    <button class="btn primary">Book and pay ${{ c.price }}</button>
-  </form>
-  <div class="hint">Simulated Playtomic checkout. No real card is charged.</div>
+  <form method="post" action="/p/{{ pid }}/pay/{{ c.invite_id }}" class="btns"><button class="btn primary">Book and pay ${{ c.price }}</button></form>
   {% endif %}
-
   {% if c.can_reply %}
   <div class="btns">
     <form method="post" action="/p/{{ pid }}/reply/{{ c.invite_id }}" style="flex:1;display:flex">
@@ -189,21 +159,31 @@
     <input name="text" placeholder="Or write a reply, e.g. who else is playing?" maxlength="500" autocomplete="off">
     <button class="btn small {{ 'primary' if c.status == 'invited' else 'dark' }}">Send</button>
   </form>
-  <div class="hint">Rally reads your reply. Anything unclear goes to a person at the club, never to an automatic booking.</div>
   {% endif %}
-
   {% if c.thread %}
-  <details class="thread"><summary>Messages ({{ c.thread|length }})</summary>
+  <details class="thread"><summary>Messages from the club ({{ c.thread|length }})</summary>
     <div class="bubbles">{% for m in c.thread %}<div class="bubble {{ m.dir }}">{{ m.body }}<span class="ts">{{ m.ts }}</span></div>{% endfor %}</div>
   </details>
   {% endif %}
 </div>
-{% endfor %}
+{% endmacro %}
 
-{% if open_cards %}{{ free_card(false) }}{% endif %}
+{% set pay_requests = free.requests | selectattr("can_pay") | list %}
+{% set other_requests = free.requests | rejectattr("can_pay") | list %}
+{% set org_needs = organiser_cards | selectattr("stage", "in", ["ask", "choose"]) | list %}
+{% set org_other = organiser_cards | rejectattr("stage", "in", ["ask", "choose"]) | list %}
+{% set n_needs = needs_cards|length + pay_requests|length + org_requests|length + org_needs|length %}
 
+{# ---- 1. Needs you: everything waiting on this player ---- #}
+{% if n_needs %}
+<div class="section-title" style="color:var(--court)">Needs you · {{ n_needs }}</div>
+{% for c in needs_cards %}{{ invite_card(c) }}{% endfor %}
+{% for r in pay_requests %}{{ request_card(r) }}{% endfor %}
+{% for o in org_needs %}{{ org_card(o) }}{% endfor %}
+{% for r in org_requests %}{{ join_request_card(r) }}{% endfor %}
+{% endif %}
 
-
+{# ---- 2. Your games ---- #}
 {% if games %}
 <div class="section-title">Your games</div>
 {% for g in games %}
@@ -225,20 +205,25 @@
 {% endfor %}
 {% endif %}
 
-{% if not open_cards and games %}{{ free_card(false) }}{% endif %}
+{# ---- 3. In progress: waiting on someone else ---- #}
+{% if progress_cards or other_requests or org_other %}
+<div class="section-title">In progress</div>
+{% for c in progress_cards %}{{ invite_card(c) }}{% endfor %}
+{% for o in org_other %}{{ org_card(o) }}{% endfor %}
+{% for r in other_requests %}{{ request_card(r) }}{% endfor %}
+{% endif %}
 
+{# ---- 4. Looking for a game ---- #}
+{{ free_card(not n_needs and not games) }}
+
+{# ---- 5. Earlier ---- #}
 {% if past_cards %}
 <div class="section-title">Earlier</div>
 {% for c in past_cards %}
 <div class="card">
   <div class="eyebrow">{{ c.title|upper }}</div>
   <div style="font-weight:800">{{ c.when }} · {{ c.court }}</div>
-  <div class="status {{ 'ok' if c.status == 'booked' else 'off' }}"><b>{{ c.headline }}</b>{{ c.detail }}</div>
-  {% if c.thread %}
-  <details class="thread"><summary>Messages ({{ c.thread|length }})</summary>
-    <div class="bubbles">{% for m in c.thread %}<div class="bubble {{ m.dir }}">{{ m.body }}<span class="ts">{{ m.ts }}</span></div>{% endfor %}</div>
-  </details>
-  {% endif %}
+  <div class="status off"><b>{{ c.headline }}</b>{{ c.detail }}</div>
 </div>
 {% endfor %}
 {% endif %}

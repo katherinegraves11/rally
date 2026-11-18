@@ -124,6 +124,30 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
      - if Rally is already asking players: "The club is finding a 4th" (no names of who was asked).
    - Every booked player gets a "Your game is full" alert when the spot is filled.
 
+10. **Panel fixes, second review (2026-11-17, Katie approved all seven).**
+    1. **"I can't make it anymore"** on the game page for booked players (not the organiser). It frees the
+       spot in the booking system, tells teammates (alert), and the open spot reaches the club or
+       organiser through the usual detection. Too close to start for Rally: the page says to tell the
+       front desk too.
+       **Late-cancellation fee (Katie, 2026-11-17):** players who opted in and then drop out late pay a
+       fee. Provisional settings in `cancellation` (policy 0.1.3): free until 24 hours before the game;
+       after that a $30 fee (one player's share). The rule is shown on the game page before anyone
+       needs it, and dropping out is a two-step confirm that states the fee first. Simulated payment,
+       logged as `LATE_CANCEL_FEE`. The team should confirm the window and amount.
+    2. **"Needs you" at the top of home:** everything waiting on the player (answer an invite, book and
+       pay, an organiser decision) in one group; then games, then things in progress, then "I'm free".
+    3. **One organiser card per game:** a teammate's "find a 4th" request shows inside the organiser's
+       game card instead of as a second card; answering it also answers the request.
+    4. **Small print said once:** the demo strip already says payments are simulated; repeated hint lines
+       under cards are removed.
+    5. **"Find a 4th" takes an optional note** ("my friend Sam might be free"); the dashboard request has
+       an **Open this game** button that opens it under Players needed.
+    6. **Answer-time target:** the club aims to answer requests within `club.request_reply_minutes`
+       (provisional, 30 min; policy 0.1.3). Players see "the club aims to answer by 11:30 AM"; the
+       dashboard shows how long each request has waited.
+    7. **"I'm free" for the whole week** (today plus six days), and it remembers the player's last
+       window (or starts from their usual playing times).
+
 ## Engine additions (`rally/`)
 
 | Change | Where | Rule it keeps |

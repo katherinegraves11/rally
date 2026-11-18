@@ -165,6 +165,18 @@ class MockBookingProvider:
             conn.execute("UPDATE matches SET player_ids = ?, payment_status = ? WHERE match_id = ?",
                          (json.dumps(players), payment_status, match_id))
 
+    def simulate_player_dropout(self, match_id: str, player_id: str, note: str) -> None:
+        """A booked player cancelled: the provider frees their seat and records them as dropped out."""
+        with self._conn() as conn:
+            row = conn.execute("SELECT player_ids, dropout_player_ids FROM matches WHERE match_id = ?",
+                               (match_id,)).fetchone()
+            if row is None:
+                raise ValueError(f"unknown match {match_id}")
+            players = [p for p in json.loads(row["player_ids"]) if p != player_id]
+            dropouts = json.loads(row["dropout_player_ids"]) + [player_id]
+            conn.execute("UPDATE matches SET player_ids = ?, dropout_player_ids = ?, note = ? WHERE match_id = ?",
+                         (json.dumps(players), json.dumps(dropouts), note, match_id))
+
     def simulate_seat_taken_elsewhere(self, match_id: str, outsider_id: str = "EXT-WALKIN") -> None:
         """Someone outside Rally (e.g. at the front desk) filled the open seat."""
         self.simulate_seat_filled(match_id, outsider_id, payment_status="paid")

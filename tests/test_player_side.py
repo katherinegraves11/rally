@@ -490,7 +490,72 @@ def test_non_organiser_in_a_private_game_asks_the_organiser(engine, side):
     assert page["fill"]["state"] == "can_ask" and "Elif Y." in page["fill"]["action"]
     side.request_fill("P014", PRIV)
     assert not side.pending_requests()                            # not the club's call
-    inbox = side.pending_requests(organiser_id=ORG)
-    assert inbox[0]["kind"] == "fill_organiser"
+    card = side.organiser_cards(ORG)[0]                           # shown inside Elif's own game card
+    assert card.fill_requests and card.fill_requests[0]["name"] == "Ben T."
+    assert not side.pending_requests(organiser_id=ORG)            # no second, duplicate card
     assert side.latest_unread(ORG)["title"] == "Ben T. asked you to find a 4th"
     assert side.game_page(ORG, PRIV)["fill"]["state"] == "organiser"
+
+
+
+# ---- second panel review: drop out + fee, merged organiser card, answer times, week-long I'm free ------
+def _book_into_c2(engine, side):
+    cid = approve(engine, MP_MAIN, n=1)
+    pid = engine.storage.get_campaign(cid)["approval"]["approved_player_ids"][0]
+    side.reply(pid, f"{cid}:{pid}", "yes")
+    side.pay(pid, f"{cid}:{pid}")
+    return pid
+
+
+def test_drop_out_frees_the_spot_charges_the_late_fee_and_tells_teammates(engine, side):
+    _book_into_c2(engine, side)
+    page = side.game_page("P001", OPEN_C2)
+    assert page["can_drop"] and page["cancel"]["late"]              # the demo game is today: inside 24 h
+    msg = side.drop_out("P001", OPEN_C2)
+    assert "$30 late-cancellation fee" in msg
+    m = engine.provider.get_match(OPEN_C2)
+    assert "P001" not in m.player_ids and "P001" in m.dropout_player_ids
+    assert any(ev["event_type"] == "LATE_CANCEL_FEE" for ev in engine.storage.events())
+    assert side.latest_unread("P002")["title"] == "Daniela M. can't make it anymore"
+    with pytest.raises(PlayerError):
+        side.game_page("P001", OPEN_C2)                            # no longer in the game or its chat
+    assert f"MP-{OPEN_C2}" in _opp_ids(engine)                     # the club sees the open spot again
+
+
+def test_no_fee_when_cancelling_in_time(engine, side):
+    from types import SimpleNamespace
+    later = SimpleNamespace(start=engine.now() + timedelta(hours=48))
+    terms = side.cancel_terms("P001", later)
+    assert not terms["late"] and terms["fee"] == 0
+
+
+def test_the_organiser_cannot_drop_out_of_their_own_game(engine, side):
+    with pytest.raises(PlayerError):
+        side.drop_out(ORG, PRIV)
+
+
+def test_organiser_answering_the_card_answers_the_teammates_request(engine, side):
+    side.request_fill("P014", PRIV, "my friend might be free")
+    side.organiser_decide(ORG, PRIV, "rally")
+    r = [x for x in engine.storage.requests(target_id=PRIV) if x["kind"] == "fill_organiser"][0]
+    assert r["status"] == "acknowledged"
+    assert side.organiser_cards(ORG)[0].fill_requests == []
+    assert side.game_page("P014", PRIV)["fill"]["state"] in ("asked", "finding")
+
+
+def test_requests_show_when_the_club_aims_to_answer(engine, side):
+    side.post_free(AMA, "today", 11, 14)
+    side.ask_about(AMA, C4)
+    r = side.my_requests(AMA)[0]
+    assert r["answer_by"] == "11:20 AM"                            # asked 10:50 + 30 min target
+    assert side.pending_requests()[0]["target_min"] == 30
+
+
+def test_im_free_covers_the_week_and_remembers_the_window(engine, side):
+    opts = side.free_options(AMA)
+    assert len(opts["days"]) == 7
+    side.post_free(AMA, "3", 18, 21)                               # three days from now
+    w = engine.storage.availability(engine.now(), AMA)[0]
+    assert (w["start"].date() - engine.now().date()).days == 3
+    again = side.free_options(AMA)
+    assert (again["default_start"], again["default_end"]) == (18, 21)

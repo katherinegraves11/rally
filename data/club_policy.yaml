@@ -3,7 +3,7 @@
 # Every value below is a PROVISIONAL demo setting from PRD section 8. Nothing here has been
 # approved by the team or by a club yet. Change a value and bump policy_version.
 
-policy_version: "0.1.2-provisional (2026-11-17)"
+policy_version: "0.1.3-provisional (2026-11-17)"
 status: provisional
 
 club:
@@ -15,6 +15,11 @@ club:
   players_per_court: 4
   address: "250 Northpoint Avenue, Brooklyn, NY (fictional demo address)"   # added 0.1.2 (game page)
   chat_open_hours_after: 3         # game chat closes 3 hours after the game ends (added 0.1.2)
+  request_reply_minutes: 30        # added 0.1.3: target time for the club to answer a player's request
+
+cancellation:                      # added 0.1.3 (Katie): dropping out late costs a fee. PROVISIONAL values.
+  free_until_hours_before: 24      # cancel at least this long before the game: no fee
+  late_fee_usd: 30                 # inside that window: this fee (one player's share), simulated
 
 schedule:
   # Opening hours and off-peak windows come from data/occupancy_profile.csv

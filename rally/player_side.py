@@ -75,6 +75,7 @@ class OrganiserCard:
     detail: str
     opportunity_id: str | None = None
     asked: list[dict] = field(default_factory=list)
+    fill_requests: list[dict] = field(default_factory=list)
 
 
 class PlayerSide:
@@ -128,8 +129,10 @@ class PlayerSide:
             "club": self.e.policy().club.name,
             "now": self.e.now(),
             "now_label": f"{day_label(self.e.now())} · {time_label(self.e.now())}",
+            "needs_cards": [c for c in cards if c.status in ("invited", "pay", "with_club")],
             "open_cards": [c for c in cards if c.status in ("invited", "pay", "waiting_group", "paid_waiting",
                                                              "checking", "with_club")],
+            "progress_cards": [c for c in cards if c.status in ("waiting_group", "paid_waiting", "checking")],
             "past_cards": [c for c in cards if c.status not in ("invited", "pay", "waiting_group", "paid_waiting",
                                                                  "checking", "with_club", "booked")],
             "organiser_cards": self.organiser_cards(pid),
@@ -368,6 +371,10 @@ class PlayerSide:
                                  else "Too close to start time")
                 card.detail = ("Someone dropped out. Find your own, or should we?" if lead_ok else
                                f"Rally needs at least {policy.timing.min_lead_time_minutes} minutes to help.")
+            card.fill_requests = [{"request_id": r["request_id"], "name": short_name(self._profile(r["player_id"]).name),
+                                   "note": r["note"] or ""}
+                                  for r in self.e.storage.requests(target_id=match_id)
+                                  if r["kind"] == "fill_organiser" and r["status"] == "pending"]
             cards.append(card)
         return cards
 
@@ -390,6 +397,9 @@ class PlayerSide:
             raise PlayerError("Rally is already asking players for this game.")
         with self.e.storage.connect() as conn:
             self.e.storage.set_organizer_decision(conn, match_id, pid, mode, self.e.now())
+        for r in self.e.storage.requests(target_id=match_id):   # the organiser's answer also answers teammates
+            if r["kind"] == "fill_organiser" and r["status"] == "pending":
+                self.decide_request(r["request_id"], "acknowledge", f"organiser:{pid}", organiser_id=pid)
         self._log("ORGANISER_AUTHORISED" if mode == "rally" else "ORGANISER_DECLINED_HELP", pid,
                   {"match_id": match_id, "mode": mode,
                    "effect": "private match may be filled by Rally; organiser approves who is asked"
@@ -498,11 +508,28 @@ class PlayerSide:
     # ---- "I'm free" (solo player looking for a game) ------------------------------------------------
     FREE_HOURS = list(range(7, 24))   # club is open 07:00-24:00 (occupancy spreadsheet)
 
-    def free_options(self) -> dict:
+    BAND_HOURS = {"weekday_early": (7, 10), "weekday_midday": (10, 14), "weekday_afternoon": (14, 17),
+                  "weekday_evening": (17, 21), "weekday_late": (21, 24), "weekend_morning": (8, 12),
+                  "weekend_afternoon": (12, 17), "weekend_evening": (17, 21)}
+
+    def free_options(self, pid: str | None = None) -> dict:
+        """Day choices for the next week, and the window to pre-fill: the player's last window, else their usual
+        playing time, else the next three hours."""
         now = self.e.now()
-        first_today = now.hour + 1
-        return {"today_hours": [h for h in self.FREE_HOURS if h >= first_today],
-                "all_hours": self.FREE_HOURS, "now_hour": now.hour}
+        days = [{"value": str(i), "label": "Today" if i == 0 else "Tomorrow" if i == 1
+                 else (now + timedelta(days=i)).strftime("%a %b %-d")} for i in range(7)]
+        start, end = min(now.hour + 1, 23), min(now.hour + 4, 24)
+        if pid:
+            last = (self.e.storage.get_pref(pid, "free_start", ""), self.e.storage.get_pref(pid, "free_end", ""))
+            if all(last):
+                start, end = int(last[0]), int(last[1])
+            else:
+                bands = [b for b in self._profile(pid).preferred_bands if b in self.BAND_HOURS]
+                if bands:
+                    start, end = self.BAND_HOURS[bands[0]]
+        day = "0" if end > now.hour + 1 else "1"
+        return {"days": days, "all_hours": self.FREE_HOURS, "default_start": start, "default_end": end,
+                "default_day": day, "now_hour": now.hour}
 
     def free_status(self, pid: str) -> dict:
         now = self.e.now()
@@ -510,7 +537,7 @@ class PlayerSide:
                    for a in self.e.storage.availability(now, pid)]
         return {"windows": windows, "games": self.games_that_fit(pid) if windows else [],
                 "around": self.games_around(pid) if windows else [], "requests": self.my_requests(pid),
-                **self.free_options()}
+                **self.free_options(pid)}
 
     def _window_label(self, start: datetime, end: datetime) -> str:
         return f"{relative_day(start, self.e.now())} · {time_label(start)}–{time_label(end)}"
@@ -519,12 +546,13 @@ class PlayerSide:
         p = self._profile(pid)
         if p.opt_in_status != "opted_in":
             raise PlayerError("Turn invites on first: saying you're free lets the club message you about games then.")
-        if day not in ("today", "tomorrow"):
-            raise PlayerError("Pick today or tomorrow.")
+        day = {"today": "0", "tomorrow": "1"}.get(str(day), str(day))
+        if day not in {str(i) for i in range(7)}:
+            raise PlayerError("Pick a day in the next week.")
         if not (start_hour in self.FREE_HOURS and 7 < end_hour <= 24 and end_hour - start_hour >= 2):
             raise PlayerError("Pick a window of at least 2 hours while the club is open (7 AM to midnight).")
         now = self.e.now()
-        base = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=0 if day == "today" else 1)
+        base = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=int(day))
         start, end = base + timedelta(hours=start_hour), base + timedelta(hours=end_hour)
         if end <= now + timedelta(minutes=self.e.policy().timing.min_lead_time_minutes):
             raise PlayerError("That time has already passed, or is too soon to set up a game.")
@@ -533,6 +561,8 @@ class PlayerSide:
             raise PlayerError("You've already said you're free for part of that time.")
         with self.e.storage.connect() as conn:
             avail_id = self.e.storage.add_availability(conn, pid, start, end, now)
+            self.e.storage.set_pref(conn, pid, "free_start", str(start_hour))   # remembered for next time
+            self.e.storage.set_pref(conn, pid, "free_end", str(end_hour))
         self._log("PLAYER_AVAILABLE", pid, {"avail_id": avail_id, "start": start.isoformat(), "end": end.isoformat(),
                                             "effect": "moves up the list for matching games in this window; "
                                                       "invites still need approval"})
@@ -737,7 +767,12 @@ class PlayerSide:
             info = self._target_info(r)
             if info is None or info["start"] <= self.e.now():
                 continue
+            answer_by = None
+            if r["status"] == "pending" and r["kind"] not in self.ORGANISER_KINDS:
+                answer_by = time_label(datetime.fromisoformat(r["created_at"])
+                                       + timedelta(minutes=self.e.policy().club.request_reply_minutes))
             out.append({**info, **self._request_status(r, r["kind"]), "kind": r["kind"], "note": r["note"] or "",
+                        "answer_by": answer_by,
                         "can_pay": r["status"] == "approved" and r["kind"] != "empty_court",
                         "price": price_per_player(self.e.policy())})
         return out
@@ -767,14 +802,16 @@ class PlayerSide:
                 continue
             if organiser_id is None and r["kind"] in self.ORGANISER_KINDS:
                 continue
-            if organiser_id is not None and (r["kind"] not in self.ORGANISER_KINDS
+            if organiser_id is not None and (r["kind"] != "organiser"
                                              or self.e.organizer_of(r["target_id"]) != organiser_id):
-                continue
+                continue   # fill requests show inside the organiser's own game card instead
             info = self._target_info(r)
             if info is None or info["start"] <= self.e.now():
                 continue
             p = profiles[r["player_id"]]
+            waited = int((self.e.now() - datetime.fromisoformat(r["created_at"])).total_seconds() // 60)
             out.append({**info, "request_id": r["request_id"], "kind": r["kind"], "status": r["status"],
+                        "waited_min": waited, "target_min": self.e.policy().club.request_reply_minutes,
                         "note": r["note"] or "", "player_id": p.player_id,
                         "name": p.name if organiser_id is None else short_name(p.name),
                         "player_level": level_label(p.level), "asked_at": time_label(datetime.fromisoformat(r["created_at"]))})
@@ -907,7 +944,8 @@ class PlayerSide:
                 club_msgs += [{"dir": x["direction"], "body": x["body"],
                                "ts": time_label(datetime.fromisoformat(x["sim_ts"]))}
                               for x in self.e.storage.messages(c["campaign_id"], pid)]
-        return {"club_messages": club_msgs, "fill": self.fill_status(pid, m),
+        return {"club_messages": club_msgs, "fill": self.fill_status(pid, m), "cancel": self.cancel_terms(pid, m),
+                "can_drop": m.start > now and self.e.organizer_of(match_id) != pid,
                 "open_spots": max(0, m.capacity - len(m.player_ids)),
                 "match_id": match_id, "court": f"Court {m.court_id[1:]}", "club": policy.club.name,
                 "address": policy.club.address, "when": f"{relative_day(m.start, now)} · {range_label(m.start, m.end)}",
@@ -1006,7 +1044,7 @@ class PlayerSide:
         "booking_link_group": "Your group is set: book and pay", "waitlist": "You're on the waitlist",
         "seat_gone": "That spot was filled", "court_gone": "That game is off", "opt_out_ack": "Invites turned off",
         "request_approved": "Good news: you can join", "request_declined": "Your request was answered",
-        "request_acknowledged": "The club noted your interest",
+        "request_acknowledged": "The club noted your interest", "dropout_ack": "You've left the game",
     }
 
     def notifications(self, pid: str) -> list[dict]:
@@ -1074,6 +1112,17 @@ class PlayerSide:
                 elif ev["event_type"] == "STATE_CHANGED" and ev["to_state"] == State.CONFIRMED.value:
                     add(f"e:{ev['event_id']}", ev["sim_ts"], "🎾", "Your game is full",
                         "The new player booked and paid.", f"/p/{pid}")
+        # teammates (and the organiser) hear when someone in their game drops out
+        if self.e.provider_status == "ok":
+            my_games = {m.match_id: m for m in self.e.provider.all_matches() if pid in m.player_ids or m.match_id in mine}
+            for ev in self.e.storage.events():
+                d = ev["detail"] or {}
+                if ev["event_type"] == "PLAYER_DROPPED_OUT" and d.get("match_id") in my_games and d.get("player_id") != pid:
+                    who = short_name(profiles[d["player_id"]].name) if d.get("player_id") in profiles else "A player"
+                    g = my_games[d["match_id"]]
+                    add(f"e:{ev['event_id']}", ev["sim_ts"], "🚪", f"{who} can't make it anymore",
+                        f"Court {g.court_id[1:]}, {range_label(g.start, g.end)} has an open spot. Tap to find a 4th.",
+                        f"/p/{pid}/game/{d['match_id']}" if pid in g.player_ids else f"/p/{pid}")
         # every booked player (not just the organiser) hears when an open spot in their game is filled
         if self.e.provider_status == "ok":
             booked_in = {m.match_id for m in self.e.provider.all_matches() if pid in m.player_ids} - mine
@@ -1145,9 +1194,12 @@ class PlayerSide:
         decider = org_name if organiser else "the club"
         if mine:
             r = mine[-1]
+            by = time_label(datetime.fromisoformat(r["created_at"])
+                            + timedelta(minutes=policy.club.request_reply_minutes))
             return {"state": "asked", "title": f"You asked {decider} to find a 4th",
                     "detail": ("They're on it. You'll get an alert when the spot is filled." if r["status"] == "acknowledged"
-                               else "Waiting for them to see it.")}
+                               else (f"The club aims to answer by {by}." if not organiser
+                                     else f"{org_name} has been alerted."))}
         if m.start - now < timedelta(minutes=policy.timing.min_lead_time_minutes):
             return {"state": "too_soon", "title": "This game has an open spot",
                     "detail": f"It's too close to start for Rally to find someone. Ask at the front desk."}
@@ -1167,3 +1219,39 @@ class PlayerSide:
                                                "goes_to": "organiser" if status["kind"] == "fill_organiser" else "club"},
                   opportunity_id=f"MP-{match_id}")
         self.e.refresh()
+
+
+    # ---- "I can't make it anymore" (with the club's late-cancellation fee) ----------------------------
+    def cancel_terms(self, pid: str, m) -> dict:
+        c = self.e.policy().cancellation
+        free_until = m.start - timedelta(hours=c.free_until_hours_before)
+        late = self.e.now() > free_until
+        return {"free_until": f"{day_label(free_until)} {time_label(free_until)}", "late": late,
+                "fee": c.late_fee_usd if late else 0.0, "fee_label": f"${c.late_fee_usd:.0f}",
+                "rule": (f"Free to cancel until {c.free_until_hours_before:.0f} hours before the game; after that "
+                         f"there's a ${c.late_fee_usd:.0f} late-cancellation fee.")}
+
+    def drop_out(self, pid: str, match_id: str) -> str:
+        m = self._booked_match(pid, match_id)
+        now = self.e.now()
+        if m.start <= now:
+            raise PlayerError("This game has already started.")
+        if self.e.organizer_of(match_id) == pid:
+            raise PlayerError("You organise this game. Please ask the club to change or cancel it.")
+        terms = self.cancel_terms(pid, m)
+        p = self._profile(pid)
+        self.e.provider.simulate_player_dropout(match_id, pid, f"{p.name} dropped out at {time_label(now)}")
+        with self.e.storage.connect() as conn:
+            body = (f"You've left the game on Court {m.court_id[1:]}, {range_label(m.start, m.end)}. "
+                    + (f"A {terms['fee_label']} late-cancellation fee applies (simulated)." if terms["late"]
+                       else "No fee: you cancelled in time."))
+            self.e.messaging.send(conn, campaign_id=None, invite_id=None, player_id=pid, channel=p.opt_in_channel,
+                                  kind="dropout_ack", body=body, now=now)
+        self._log("PLAYER_DROPPED_OUT", pid, {"match_id": match_id, "late": terms["late"],
+                                              "effect": "seat freed in the booking system; teammates alerted"},
+                  opportunity_id=f"MP-{match_id}")
+        if terms["late"]:
+            self._log("LATE_CANCEL_FEE", pid, {"match_id": match_id, "amount_usd": terms["fee"], "simulated": True,
+                                               "rule": terms["rule"]}, opportunity_id=f"MP-{match_id}")
+        self.e.refresh()
+        return body

@@ -363,11 +363,16 @@ def requests_panel() -> None:
                 c1.markdown(f"**{r['name']}** (level {r['player_level']}) {what} **{r['court']}, {r['when']}**"
                             + (f" · game level {r['level']}, {r['players']}" if r["kind"] != "empty_court" else ""))
                 if r["kind"] == "fill_club":
-                    c1.markdown("<span class='small'>Open the game under <b>Players needed</b> to approve who Rally "
-                                "asks.</span>", unsafe_allow_html=True)
+                    if c1.button("Open this game ↓", key=f"open_fill_{r['request_id']}"):
+                        st.session_state[f"sel_{OpportunityType.MISSING_PLAYER.value}"] = f"MP-{r['target_id']}"
+                        st.session_state["flash"] = ("requests", "success",
+                                                     "Opened below under Players needed: approve who Rally asks.")
+                        st.rerun()
                 if r["note"]:
                     c1.markdown(f"<span class='small'>Their note: “{r['note']}”</span>", unsafe_allow_html=True)
-                c1.markdown(f"<span class='small'>Asked at {r['asked_at']}"
+                late = r["status"] == "pending" and r["waited_min"] > r["target_min"]
+                c1.markdown(f"<span class='small'>{'⏰ ' if late else ''}Waiting {r['waited_min']} min "
+                            f"(aim: {r['target_min']} min) · asked at {r['asked_at']}"
                             + (" · you said you'd be in touch" if r["status"] == "acknowledged" else "") + "</span>",
                             unsafe_allow_html=True)
                 choices = ([("acknowledge", "👍 We'll let you know"), ("decline", "Not this time")]

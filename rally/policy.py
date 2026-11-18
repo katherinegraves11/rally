@@ -28,6 +28,12 @@ class ClubCfg(BaseModel):
     players_per_court: int = 4
     address: str = ""          # shown on booked players' game page
     chat_open_hours_after: float = 3.0   # game chat closes this long after the game ends
+    request_reply_minutes: int = 30      # target time for the club to answer a player's request
+
+
+class CancellationCfg(BaseModel):
+    free_until_hours_before: float = 24.0
+    late_fee_usd: float = 30.0
 
 
 class ScheduleCfg(BaseModel):
@@ -137,6 +143,7 @@ class ClubPolicy(BaseModel):
     escalation: EscalationCfg
     llm: LlmCfg
     demo: DemoCfg
+    cancellation: CancellationCfg = CancellationCfg()
     source_path: str = ""
     sha256: str = ""
 

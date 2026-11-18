@@ -6,7 +6,8 @@
   <div class="eyebrow">YOU'RE BOOKED · {{ game.court }}</div>
   <div class="big">{{ game.when }}</div>
   <div class="meta">{{ game.club }} · level {{ game.level }} · {{ game.spots }} players</div>
-  <div class="status" style="margin-top:12px"><b>Where</b>{{ game.address }}<div class="hint" style="margin-top:4px">Arrive 10 minutes early to warm up. Your court is {{ game.court }}.</div></div>
+  <div class="status" style="margin-top:12px"><b>Where</b>{{ game.address }}<div class="hint" style="margin-top:4px">Arrive 10 minutes early to warm up.</div></div>
+  <div class="hint" style="margin-top:10px">{{ game.cancel.rule }}</div>
 </div>
 
 {% if game.fill %}
@@ -14,9 +15,9 @@
   <div class="eyebrow">{{ game.open_spots }} OPEN SPOT{{ 'S' if game.open_spots > 1 else '' }}</div>
   <div class="status {{ 'wait' if game.fill.state in ('finding', 'asked') else 'off' }}" style="margin-top:6px"><b>{{ game.fill.title }}</b>{{ game.fill.detail }}</div>
   {% if game.fill.state == 'can_ask' %}
-  <form method="post" action="/p/{{ pid }}/game/{{ game.match_id }}/fill" class="btns">
-    <button class="btn primary">{{ game.fill.action }}</button></form>
-  <div class="hint">Rally only invites opted-in players at your game's level, and someone at the club or the organiser approves who's asked.</div>
+  <form method="post" action="/p/{{ pid }}/game/{{ game.match_id }}/fill" style="margin-top:12px">
+    <div class="reply" style="margin-top:0"><input name="note" maxlength="200" placeholder="Add a note (optional), e.g. my friend Sam might be free" autocomplete="off"></div>
+    <div class="btns"><button class="btn primary">{{ game.fill.action }}</button></div></form>
   {% elif game.fill.state == 'organiser' %}
   <div class="btns"><a class="btn primary" href="/p/{{ pid }}">Go to Games</a></div>
   {% endif %}
@@ -64,7 +65,7 @@
     <input type="hidden" name="on" value="{{ '0' if game.muted else '1' }}">
     <button class="btn small ghost" style="opacity:.8">{{ '🔔 Unmute this chat' if game.muted else '🔕 Mute this chat' }}</button>
   </form>
-  <div class="hint">Only the players booked in this game can see this chat. It closes at {{ game.chat_closes }}. Report anything that makes you uncomfortable and the club will review it.</div>
+  <div class="hint">Only players booked in this game see this chat. It closes at {{ game.chat_closes }}.</div>
   {% else %}
   <div class="status off"><b>This chat has closed</b>Game chats close 3 hours after the game ends.</div>
   {% endif %}
@@ -74,6 +75,18 @@
   <summary>Messages from the club ({{ game.club_messages|length }})</summary>
   <div class="muted" style="margin-top:8px">The texts the club sent you about joining this game. To talk to your teammates, use Game chat above.</div>
   <div class="bubbles">{% for m in game.club_messages %}<div class="bubble {{ m.dir }}">{{ m.body }}<span class="ts">{{ m.ts }}</span></div>{% endfor %}</div>
+</details>
+{% endif %}
+{% if game.can_drop %}
+<details class="card" style="margin-top:12px">
+  <summary style="cursor:pointer;font-weight:700">I can't make it anymore</summary>
+  <div class="status {{ 'wait' if game.cancel.late else 'off' }}" style="margin-top:10px">
+    {% if game.cancel.late %}<b>Cancelling now costs {{ game.cancel.fee_label }}</b>It's less than the club's free-cancellation window before the game (free until {{ game.cancel.free_until }}).
+    {% else %}<b>No fee if you cancel now</b>Free until {{ game.cancel.free_until }}.{% endif %}
+    Your teammates will be told, and the spot will be offered to someone else.
+  </div>
+  <form method="post" action="/p/{{ pid }}/game/{{ game.match_id }}/drop" class="btns">
+    <button class="btn ghost" style="color:#8f2418">{{ 'Cancel and pay ' ~ game.cancel.fee_label if game.cancel.late else 'Cancel my spot' }}</button></form>
 </details>
 {% endif %}
 {% endblock %}

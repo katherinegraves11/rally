@@ -297,12 +297,23 @@ def post_chat(pid: str, match_id: str, text: str = Form("")):
     return RedirectResponse(f"/p/{pid}/game/{match_id}#chat-end", status_code=303)
 
 
-@app.post("/p/{pid}/game/{match_id}/fill")
-def request_fill(pid: str, match_id: str):
+@app.post("/p/{pid}/game/{match_id}/drop")
+def drop_out(pid: str, match_id: str):
     with _lock:
         _ensure()
         try:
-            side.request_fill(pid, match_id)
+            msg = side.drop_out(pid, match_id)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, f"/game/{match_id}", err=str(exc))
+    return _back(pid, msg=msg)
+
+
+@app.post("/p/{pid}/game/{match_id}/fill")
+def request_fill(pid: str, match_id: str, note: str = Form("")):
+    with _lock:
+        _ensure()
+        try:
+            side.request_fill(pid, match_id, note)
         except (PlayerError, ValueError) as exc:
             return _back(pid, f"/game/{match_id}", err=str(exc))
     return _back(pid, f"/game/{match_id}", msg="Sent. You'll get an alert when the spot is filled.")
