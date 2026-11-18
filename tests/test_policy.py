@@ -12,7 +12,7 @@ from rally.schemas import OpportunityType
 
 def test_policy_loads_versioned_and_provisional():
     policy = load_policy()
-    assert policy.policy_version.startswith("0.1.0")
+    assert policy.policy_version.startswith("0.1.")
     assert policy.status == "provisional"
     assert policy.sha256  # every trace can point back to the exact file
 

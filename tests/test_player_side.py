@@ -171,3 +171,75 @@ def test_g16_backups_never_exceed_max_sends(engine):
     for pid, ans in zip(ids[:4], ["yes", "no", "no", "no"]):
         engine.reply(f"{cid}:{pid}", ans)
     assert sum(1 for i in invites(engine, cid).values() if i["sent_at"]) == 5
+
+
+# ---- "I'm free" (solo player looking for a game) -----------------------------------------------------
+MP_C6 = "MP-M-OPEN-2030-C6"   # open match, 3/4, level 2.5, Tue 20:30
+AMA = "P029"                  # level 2.2, opted in
+
+
+def test_im_free_shows_open_seats_that_fit(engine, side):
+    assert side.free_status(AMA)["games"] == []
+    side.post_free(AMA, "today", 18, 23)
+    games = side.free_status(AMA)["games"]
+    assert [g["opportunity_id"] for g in games] == [MP_C6]
+
+
+def test_im_free_needs_invites_on_and_a_sensible_window(engine, side):
+    side.set_opt_in(AMA, False)
+    with pytest.raises(PlayerError):
+        side.post_free(AMA, "today", 18, 23)
+    side.set_opt_in(AMA, True)
+    with pytest.raises(PlayerError):
+        side.post_free(AMA, "today", 18, 19)          # under 2 hours
+    with pytest.raises(PlayerError):
+        side.post_free(AMA, "today", 7, 9)            # already over (demo clock is 10:50)
+    side.post_free(AMA, "today", 18, 23)
+    with pytest.raises(PlayerError):
+        side.post_free(AMA, "today", 20, 23)          # overlaps the first window
+
+
+def test_games_rally_is_already_asking_about_are_not_shown(engine, side):
+    approve(engine, MP_C6, n=2)
+    side.post_free(AMA, "today", 18, 23)
+    assert all(g["opportunity_id"] != MP_C6 for g in side.free_status(AMA)["games"])
+
+
+def test_wrong_level_player_sees_no_game(engine, side):
+    side.post_free("P001", "today", 18, 23)           # level 3.6; Court 6 is level 2.5
+    assert all(g["opportunity_id"] != MP_C6 for g in side.free_status("P001")["games"])
+
+
+def test_free_bonus_moves_a_player_up_and_says_why(engine, side):
+    def ama():
+        v = get_view(engine, MP_C6)
+        return next(c for c in v.shortlist.candidates + v.shortlist.reserve if c.player_id == AMA)
+    before = ama()
+    side.post_free(AMA, "today", 18, 23)
+    after = ama()
+    # time_fit can also rise to 1.0, so the gain is at least the bonus
+    assert after.total >= before.total + engine.policy().ranking.free_bonus - 0.1
+    assert after.rank < before.rank
+    assert "said they're free then" in after.explanation
+
+
+def test_self_join_books_through_the_booking_system(engine, side):
+    side.post_free(AMA, "today", 18, 23)
+    msg = side.self_join(AMA, MP_C6)
+    assert "Booked and paid" in msg
+    match = engine.provider.get_match("M-OPEN-2030-C6")
+    assert AMA in match.player_ids and match.payment_status == "paid"
+    assert MP_C6 not in _opp_ids(engine)                              # the open seat is gone
+    assert side.free_status(AMA)["windows"] == []                     # window marked joined
+    assert any(ev["event_type"] == "PLAYER_SELF_JOINED" for ev in engine.storage.events())
+    with pytest.raises(PlayerError):
+        side.self_join(AMA, MP_C6)
+
+
+def test_self_join_blocked_when_booking_system_is_down(engine, side):
+    side.post_free(AMA, "today", 18, 23)
+    engine.provider.set_outage(True)
+    with pytest.raises(PlayerError):
+        side.self_join(AMA, MP_C6)
+    engine.provider.set_outage(False)
+    assert AMA not in engine.provider.get_match("M-OPEN-2030-C6").player_ids

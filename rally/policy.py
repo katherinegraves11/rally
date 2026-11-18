@@ -88,6 +88,7 @@ class BookingCfg(BaseModel):
 class RankingCfg(BaseModel):
     weights: dict[str, float]
     time_fit_when_not_preferred: float
+    free_bonus: float = 0.0   # points added when the player said "I'm free" for this time (player app)
 
     @field_validator("weights")
     @classmethod

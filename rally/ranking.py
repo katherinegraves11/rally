@@ -37,7 +37,8 @@ def score_player(p: PlayerProfile, opp: Opportunity, policy: ClubPolicy, target_
     else:  # only reachable in rank_only mode
         skill = max(0.0, 0.5 - 0.5 * (delta - tol) / tol)
     band = time_band(opp.start)
-    time_fit = 1.0 if band in p.preferred_bands else policy.ranking.time_fit_when_not_preferred
+    free = p.is_free(opp.start, opp.end)
+    time_fit = 1.0 if (free or band in p.preferred_bands) else policy.ranking.time_fit_when_not_preferred
     known = sorted(set(p.played_with) & peers)
     social = min(1.0, len(known) / 2)
     activity = _activity(p.last_played_days_ago)
@@ -46,10 +47,16 @@ def score_player(p: PlayerProfile, opp: Opportunity, policy: ClubPolicy, target_
     features = {"skill_fit": skill, "time_fit": time_fit, "social": social, "activity": activity,
                 "freshness": freshness}
     w = policy.ranking.weights
-    total = round(100 * sum(w[k] * v for k, v in features.items()), 1)
+    bonus = policy.ranking.free_bonus if free else 0.0
+    total = round(100 * sum(w[k] * v for k, v in features.items()) + bonus, 1)
 
     bits = [f"level {p.level:.1f}" + (" (exact)" if delta == 0 else f" (Δ{delta:.1f})")]
-    bits.append(f"prefers {BAND_LABELS.get(band, band)}" if time_fit == 1.0 else "does not list this time")
+    if free:
+        bits.insert(0, f"said they're free then (+{bonus:.0f})")
+    elif time_fit == 1.0:
+        bits.append(f"prefers {BAND_LABELS.get(band, band)}")
+    else:
+        bits.append("does not list this time")
     if known:
         bits.append("has played with " + ", ".join(names.get(k, k).split()[0] for k in known))
     if p.last_played_days_ago is not None:

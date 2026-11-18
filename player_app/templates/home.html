@@ -1,6 +1,54 @@
 {% extends "base.html" %}
 {% block title %}Rally · {{ short_name }}{% endblock %}
 {% block main %}
+{% macro hour(h) %}{% if h == 24 %}midnight{% elif h == 12 %}noon{% else %}{{ (h % 12) or 12 }} {{ 'AM' if h < 12 else 'PM' }}{% endif %}{% endmacro %}
+
+{% macro free_card(hero) %}
+<div class="card {{ 'hero' if hero and not free.windows else '' }}" id="free">
+  <div class="eyebrow">LOOKING FOR A GAME?</div>
+  {% if free.windows %}
+    {% for w in free.windows %}
+    <div class="big" style="font-size:19px">You're free {{ w.label }}</div>
+    <form method="post" action="/p/{{ pid }}/free/{{ w.avail_id }}/cancel" style="margin-top:4px">
+      <button class="btn small ghost" style="opacity:.75">Cancel</button></form>
+    {% endfor %}
+    {% if free.games %}
+      <div class="section-title" style="margin:16px 0 8px">Open now, at your level</div>
+      {% for g in free.games %}
+      <div class="row" style="padding:12px 0;border-top:1px solid var(--line)">
+        <span class="avatar" style="background:var(--ball);color:var(--ball-ink)">{{ g.court[-1] }}</span>
+        <span class="grow"><span class="name">{{ g.when }}</span><br>
+          <span class="sub">{{ g.court }} · level {{ g.level }} · {{ g.players }} in</span></span>
+        <form method="post" action="/p/{{ pid }}/join/{{ g.opportunity_id }}">
+          <button class="btn small primary">Join · ${{ g.price }}</button></form>
+      </div>
+      {% endfor %}
+      <div class="hint">Joining books and pays your share in the club's booking app (simulated). You're in once it shows as paid.</div>
+    {% else %}
+      <div class="status off"><b>Nothing open that fits right now</b>When a game at your level comes up in that time, you move up the list to be asked. The club still OKs every invite.</div>
+    {% endif %}
+    <details class="thread"><summary>Add another time</summary>{{ free_form() }}</details>
+  {% else %}
+    <div class="big" style="font-size:20px">Tell the club when you're free</div>
+    <div class="meta">You'll see any open spot at your level right away, and you'll move up the list for games that come up.</div>
+    {% if profile.opt_in_status == 'opted_in' %}{{ free_form() }}
+    {% else %}<div class="btns"><a class="btn primary" href="/p/{{ pid }}/settings">Turn invites on first</a></div>{% endif %}
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro free_form() %}
+<form method="post" action="/p/{{ pid }}/free" style="margin-top:12px">
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 8px">
+    <span class="fact-k">Day</span><span class="fact-k">From</span><span class="fact-k">To</span>
+    <select name="day" aria-label="Day"><option value="today">Today</option><option value="tomorrow">Tomorrow</option></select>
+    <select name="start" aria-label="From">{% for h in free.all_hours %}<option value="{{ h }}" {{ 'selected' if h == [free.now_hour + 1, 23]|min else '' }}>{{ hour(h) }}</option>{% endfor %}</select>
+    <select name="end" aria-label="To">{% for h in free.all_hours[1:] + [24] %}<option value="{{ h }}" {{ 'selected' if h == [free.now_hour + 4, 24]|min else '' }}>{{ hour(h) }}</option>{% endfor %}</select>
+  </div>
+  <div class="btns"><button class="btn primary">I'm free</button></div>
+</form>
+{% endmacro %}
+
 <div class="hello">
   <h1>Hi {{ profile.first_name }}</h1>
   <p>{{ now_label }} · {% if profile.opt_in_status == 'opted_in' %}invites on{% else %}invites off · <a href="/p/{{ pid }}/settings">turn on</a>{% endif %}</p>
@@ -30,6 +78,8 @@
   {% endif %}
 </div>
 {% endfor %}
+
+{% if not open_cards and not games %}{{ free_card(true) }}{% endif %}
 
 {# ---- Invites: Journeys B and D ---- #}
 {% if open_cards %}<div class="section-title">Invites</div>{% endif %}
@@ -80,16 +130,9 @@
 </div>
 {% endfor %}
 
-{% if not open_cards and not organiser_cards %}
-<div class="card empty">
-  <div class="big">No invites right now</div>
-  {% if profile.opt_in_status == 'opted_in' %}
-  Rally messages you only when a game at your level and time needs a player, and never more often than your weekly limit in Settings.
-  {% else %}
-  Turn invites on in <a href="/p/{{ pid }}/settings">Settings</a> to hear about games that need a player at your level.
-  {% endif %}
-</div>
-{% endif %}
+{% if open_cards %}{{ free_card(false) }}{% endif %}
+
+
 
 {% if games %}
 <div class="section-title">Your games</div>
@@ -101,6 +144,8 @@
   {% endfor %}
 </div>
 {% endif %}
+
+{% if not open_cards and games %}{{ free_card(false) }}{% endif %}
 
 {% if past_cards %}
 <div class="section-title">Earlier</div>

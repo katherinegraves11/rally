@@ -118,6 +118,15 @@ CREATE TABLE IF NOT EXISTS organizer_authorizations (
     decided_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS player_availability (
+    avail_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id TEXT NOT NULL,
+    start TEXT NOT NULL,
+    end TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    status TEXT NOT NULL             -- active | cancelled | joined
+);
+
 CREATE TABLE IF NOT EXISTS player_payments (
     campaign_id TEXT NOT NULL,
     player_id TEXT NOT NULL,
@@ -392,6 +401,28 @@ class Storage:
         conn.execute("INSERT INTO organizer_authorizations VALUES (?,?,?,?) ON CONFLICT(match_id) DO UPDATE SET "
                      "mode = excluded.mode, decided_at = excluded.decided_at",
                      (match_id, organizer_id, mode, _iso(now)))
+
+    def add_availability(self, conn: sqlite3.Connection, player_id: str, start: datetime, end: datetime,
+                         now: datetime) -> int:
+        cur = conn.execute("INSERT INTO player_availability (player_id, start, end, created_at, status) "
+                           "VALUES (?,?,?,?, 'active')", (player_id, _iso(start), _iso(end), _iso(now)))
+        return int(cur.lastrowid)
+
+    def set_availability_status(self, conn: sqlite3.Connection, avail_id: int, status: str) -> None:
+        conn.execute("UPDATE player_availability SET status = ? WHERE avail_id = ?", (status, avail_id))
+
+    def availability(self, now: datetime, player_id: str | None = None) -> list[dict]:
+        """Active windows that haven't ended yet."""
+        sql = "SELECT * FROM player_availability WHERE status = 'active' AND end > ?"
+        args: list = [_iso(now)]
+        if player_id:
+            sql += " AND player_id = ?"
+            args.append(player_id)
+        with self.connect() as conn:
+            rows = [dict(r) for r in conn.execute(sql + " ORDER BY start", args).fetchall()]
+        for r in rows:
+            r["start"], r["end"] = datetime.fromisoformat(r["start"]), datetime.fromisoformat(r["end"])
+        return rows
 
     def payments(self, campaign_id: str) -> dict[str, dict]:
         with self.connect() as conn:

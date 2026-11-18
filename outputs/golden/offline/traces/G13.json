@@ -2,12 +2,12 @@
   "case_id": "G13",
   "title": "Four distinct players, fifth waitlist, one paid booking",
   "run": "offline",
-  "generated_at": "2026-11-17T12:28:08",
+  "generated_at": "2026-11-17T19:46:36",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",
-  "policy_version": "0.1.0-provisional (2026-11-05)",
-  "policy_sha256": "fc4403cb277d",
+  "policy_version": "0.1.1-provisional (2026-11-17)",
+  "policy_sha256": "80ab05ce6229",
   "fixture_mapping": {
     "M17": "Rally demo match M-OPEN-1730-C2 (opportunity MP-M-OPEN-1730-C2): Court 2, Tue Nov 10 2026 5:30-7:00 PM ET, 3/4 seats, level 3.5 with ±0.3 tolerance (3.2-3.8). Golden spec: Thu Nov 12, band 3.0-3.6. Booking link is Rally's simulated https://booking.example.com/rally/... (spec: demo://match/M17).",
     "E21": "Rally demo opportunity EC-20261110-1430-C1: Court 1, Tue Nov 10 2026 2:30-4:00 PM ET, typical occupancy 20%. Golden spec: Tue Nov 17.",
@@ -673,7 +673,7 @@
       "to_state": null,
       "detail": {
         "club": "Northpoint Padel",
-        "policy_sha256": "fc4403cb277d",
+        "policy_sha256": "80ab05ce6229",
         "data": "fictional players; occupancy profile from the club spreadsheet"
       }
     },
@@ -998,7 +998,7 @@
       "detail": {
         "player_id": "P030",
         "name": "Ruth Abrams",
-        "message_id": "MSG-f800e78390",
+        "message_id": "MSG-89f8c60a36",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 1,
@@ -1018,7 +1018,7 @@
       "detail": {
         "player_id": "P035",
         "name": "Carmen Flores",
-        "message_id": "MSG-0b0e22ec47",
+        "message_id": "MSG-d8ce74f476",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 2,
@@ -1038,7 +1038,7 @@
       "detail": {
         "player_id": "P031",
         "name": "Felipe Duarte",
-        "message_id": "MSG-64bc22f56f",
+        "message_id": "MSG-a903e6710e",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 3,
@@ -1058,7 +1058,7 @@
       "detail": {
         "player_id": "P033",
         "name": "Gabriel Nunes",
-        "message_id": "MSG-c2dd432276",
+        "message_id": "MSG-74466d7c27",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 4,
@@ -1078,7 +1078,7 @@
       "detail": {
         "player_id": "P032",
         "name": "Anika Sharma",
-        "message_id": "MSG-1b1131c9d4",
+        "message_id": "MSG-876dab7e35",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 5,
@@ -1098,7 +1098,7 @@
       "detail": {
         "player_id": "P034",
         "name": "Yuki Ito",
-        "message_id": "MSG-42a4f3eec6",
+        "message_id": "MSG-c58d04a9dd",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 6,
@@ -1751,7 +1751,7 @@
     {
       "call_id": 6,
       "sim_ts": "2026-11-10T11:00:00-05:00",
-      "real_ts": "2026-11-17T17:28:08+00:00",
+      "real_ts": "2026-11-18T00:46:36+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1768,7 +1768,7 @@
     {
       "call_id": 5,
       "sim_ts": "2026-11-10T10:58:00-05:00",
-      "real_ts": "2026-11-17T17:28:08+00:00",
+      "real_ts": "2026-11-18T00:46:36+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1785,7 +1785,7 @@
     {
       "call_id": 4,
       "sim_ts": "2026-11-10T10:56:00-05:00",
-      "real_ts": "2026-11-17T17:28:08+00:00",
+      "real_ts": "2026-11-18T00:46:36+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1802,7 +1802,7 @@
     {
       "call_id": 3,
       "sim_ts": "2026-11-10T10:54:00-05:00",
-      "real_ts": "2026-11-17T17:28:08+00:00",
+      "real_ts": "2026-11-18T00:46:36+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1819,7 +1819,7 @@
     {
       "call_id": 2,
       "sim_ts": "2026-11-10T10:52:00-05:00",
-      "real_ts": "2026-11-17T17:28:08+00:00",
+      "real_ts": "2026-11-18T00:46:36+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1836,7 +1836,7 @@
     {
       "call_id": 1,
       "sim_ts": "2026-11-10T10:50:00-05:00",
-      "real_ts": "2026-11-17T17:28:08+00:00",
+      "real_ts": "2026-11-18T00:46:36+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",

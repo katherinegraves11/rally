@@ -2,12 +2,12 @@
   "case_id": "G17",
   "title": "Four interested is not paid revenue",
   "run": "offline",
-  "generated_at": "2026-11-17T12:28:08",
+  "generated_at": "2026-11-17T19:46:36",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",
-  "policy_version": "0.1.0-provisional (2026-11-05)",
-  "policy_sha256": "fc4403cb277d",
+  "policy_version": "0.1.1-provisional (2026-11-17)",
+  "policy_sha256": "80ab05ce6229",
   "fixture_mapping": {
     "M17": "Rally demo match M-OPEN-1730-C2 (opportunity MP-M-OPEN-1730-C2): Court 2, Tue Nov 10 2026 5:30-7:00 PM ET, 3/4 seats, level 3.5 with ±0.3 tolerance (3.2-3.8). Golden spec: Thu Nov 12, band 3.0-3.6. Booking link is Rally's simulated https://booking.example.com/rally/... (spec: demo://match/M17).",
     "E21": "Rally demo opportunity EC-20261110-1430-C1: Court 1, Tue Nov 10 2026 2:30-4:00 PM ET, typical occupancy 20%. Golden spec: Tue Nov 17.",
@@ -482,7 +482,7 @@
       "to_state": null,
       "detail": {
         "club": "Northpoint Padel",
-        "policy_sha256": "fc4403cb277d",
+        "policy_sha256": "80ab05ce6229",
         "data": "fictional players; occupancy profile from the club spreadsheet"
       }
     },
@@ -807,7 +807,7 @@
       "detail": {
         "player_id": "P030",
         "name": "Ruth Abrams",
-        "message_id": "MSG-59ff34d7eb",
+        "message_id": "MSG-8af6c3c08b",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 1,
@@ -827,7 +827,7 @@
       "detail": {
         "player_id": "P035",
         "name": "Carmen Flores",
-        "message_id": "MSG-c0d24b7762",
+        "message_id": "MSG-ec3ce207e9",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 2,
@@ -847,7 +847,7 @@
       "detail": {
         "player_id": "P031",
         "name": "Felipe Duarte",
-        "message_id": "MSG-fae42ad4f6",
+        "message_id": "MSG-c79196b736",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 3,
@@ -867,7 +867,7 @@
       "detail": {
         "player_id": "P033",
         "name": "Gabriel Nunes",
-        "message_id": "MSG-42f1ce580a",
+        "message_id": "MSG-346a094c39",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 4,
@@ -887,7 +887,7 @@
       "detail": {
         "player_id": "P032",
         "name": "Anika Sharma",
-        "message_id": "MSG-ed1e68ae09",
+        "message_id": "MSG-0ee3fd5e44",
         "channel": "simulated_sms",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 5,
@@ -907,7 +907,7 @@
       "detail": {
         "player_id": "P034",
         "name": "Yuki Ito",
-        "message_id": "MSG-58b4dbe21f",
+        "message_id": "MSG-331176f855",
         "channel": "simulated_whatsapp",
         "reply_deadline": "2026-11-10T11:10:00-05:00",
         "send_number": 6,
@@ -1359,7 +1359,7 @@
     {
       "call_id": 4,
       "sim_ts": "2026-11-10T10:56:00-05:00",
-      "real_ts": "2026-11-17T17:28:08+00:00",
+      "real_ts": "2026-11-18T00:46:36+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1376,7 +1376,7 @@
     {
       "call_id": 3,
       "sim_ts": "2026-11-10T10:54:00-05:00",
-      "real_ts": "2026-11-17T17:28:08+00:00",
+      "real_ts": "2026-11-18T00:46:36+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1393,7 +1393,7 @@
     {
       "call_id": 2,
       "sim_ts": "2026-11-10T10:52:00-05:00",
-      "real_ts": "2026-11-17T17:28:08+00:00",
+      "real_ts": "2026-11-18T00:46:36+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",
@@ -1410,7 +1410,7 @@
     {
       "call_id": 1,
       "sim_ts": "2026-11-10T10:50:00-05:00",
-      "real_ts": "2026-11-17T17:28:08+00:00",
+      "real_ts": "2026-11-18T00:46:36+00:00",
       "purpose": "parse_reply",
       "mode": "offline",
       "model": "rules",

@@ -15,6 +15,7 @@ import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from .eligibility import filter_eligible
 from .engine import RallyEngine, short_name
 from .fmt import day_label, level_label, range_label, relative_day, time_label
 from .messaging import price_per_player
@@ -134,6 +135,7 @@ class PlayerSide:
             "organiser_cards": self.organiser_cards(pid),
             "games": self.games(pid),
             "provider_ok": self.e.provider_status == "ok",
+            "free": self.free_status(pid),
         }
 
     def version(self, pid: str) -> str:
@@ -141,7 +143,10 @@ class PlayerSide:
         msgs = self.e.storage.messages(player_id=pid)
         camps = [(c["campaign_id"], c["state"], c["updated_at"]) for c in self.e.storage.campaigns()]
         auth = sorted(self.e.storage.organizer_authorizations().items())
-        raw = f"{len(msgs)}|{camps}|{auth}|{self.e.storage.get_meta('sim_now')}|{self.e.provider_status}"
+        free = [(a["avail_id"], a["status"]) for a in self.e.storage.availability(self.e.now(), pid)]
+        opps = sorted(r["opportunity_id"] for r in self.e.storage.opportunities() if r["active"])
+        raw = (f"{len(msgs)}|{camps}|{auth}|{self.e.storage.get_meta('sim_now')}|{self.e.provider_status}|"
+               f"{free}|{opps}")
         return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
     # ---- invites -----------------------------------------------------------------------------------
@@ -285,6 +290,8 @@ class PlayerSide:
     # ---- games already on the books ----------------------------------------------------------------
     def games(self, pid: str) -> list[dict]:
         now = self.e.now()
+        joined = {e["detail"].get("match_id") for e in self.e.storage.events()
+                  if e["event_type"] == "PLAYER_SELF_JOINED" and e["detail"].get("player_id") == pid}
         out = []
         for m in self.e.provider.all_matches():
             if pid in m.player_ids and m.end > now:
@@ -292,7 +299,7 @@ class PlayerSide:
                                                             f"{range_label(m.start, m.end)}",
                             "court": f"Court {m.court_id[1:]}", "players": f"{len(m.player_ids)}/{m.capacity}",
                             "organiser": self.e.organizer_of(m.match_id) == pid,
-                            "via_rally": m.created_by == "rally_handoff"})
+                            "via_rally": m.created_by == "rally_handoff" or m.match_id in joined})
         return out
 
     # ---- organiser journey (A) ---------------------------------------------------------------------
@@ -475,3 +482,117 @@ class PlayerSide:
                   {"from": p.opt_in_status, "to": status, "source": "player app",
                    "effect": "may be invited to games that fit" if on else "no further invites"})
         self.e.refresh()
+
+
+    # ---- "I'm free" (solo player looking for a game) ------------------------------------------------
+    FREE_HOURS = list(range(7, 24))   # club is open 07:00-24:00 (occupancy spreadsheet)
+
+    def free_options(self) -> dict:
+        now = self.e.now()
+        first_today = now.hour + 1
+        return {"today_hours": [h for h in self.FREE_HOURS if h >= first_today],
+                "all_hours": self.FREE_HOURS, "now_hour": now.hour}
+
+    def free_status(self, pid: str) -> dict:
+        now = self.e.now()
+        windows = [{"avail_id": a["avail_id"], "label": self._window_label(a["start"], a["end"])}
+                   for a in self.e.storage.availability(now, pid)]
+        return {"windows": windows, "games": self.games_that_fit(pid) if windows else [],
+                **self.free_options()}
+
+    def _window_label(self, start: datetime, end: datetime) -> str:
+        return f"{relative_day(start, self.e.now())} · {time_label(start)}–{time_label(end)}"
+
+    def post_free(self, pid: str, day: str, start_hour: int, end_hour: int) -> None:
+        p = self._profile(pid)
+        if p.opt_in_status != "opted_in":
+            raise PlayerError("Turn invites on first: saying you're free lets the club message you about games then.")
+        if day not in ("today", "tomorrow"):
+            raise PlayerError("Pick today or tomorrow.")
+        if not (start_hour in self.FREE_HOURS and 7 < end_hour <= 24 and end_hour - start_hour >= 2):
+            raise PlayerError("Pick a window of at least 2 hours while the club is open (7 AM to midnight).")
+        now = self.e.now()
+        base = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=0 if day == "today" else 1)
+        start, end = base + timedelta(hours=start_hour), base + timedelta(hours=end_hour)
+        if end <= now + timedelta(minutes=self.e.policy().timing.min_lead_time_minutes):
+            raise PlayerError("That time has already passed, or is too soon to set up a game.")
+        start = max(start, now)
+        if any(a["start"] < end and start < a["end"] for a in self.e.storage.availability(now, pid)):
+            raise PlayerError("You've already said you're free for part of that time.")
+        with self.e.storage.connect() as conn:
+            avail_id = self.e.storage.add_availability(conn, pid, start, end, now)
+        self._log("PLAYER_AVAILABLE", pid, {"avail_id": avail_id, "start": start.isoformat(), "end": end.isoformat(),
+                                            "effect": "moves up the list for matching games in this window; "
+                                                      "invites still need approval"})
+        self.e.refresh()
+
+    def cancel_free(self, pid: str, avail_id: int) -> None:
+        mine = [a for a in self.e.storage.availability(self.e.now(), pid) if a["avail_id"] == avail_id]
+        if not mine:
+            raise PlayerError("That's no longer active.")
+        with self.e.storage.connect() as conn:
+            self.e.storage.set_availability_status(conn, avail_id, "cancelled")
+        self._log("PLAYER_AVAILABILITY_CANCELLED", pid, {"avail_id": avail_id})
+
+    def games_that_fit(self, pid: str) -> list[dict]:
+        """Open seats this player could take right now: club open matches only, inside one of their "I'm free"
+        windows, at their level, that Rally isn't already asking specific players about."""
+        now, policy = self.e.now(), self.e.policy()
+        p = self._profile(pid)
+        snap = self.e.snapshot
+        if snap is None or self.e.provider_status != "ok" or not p.free_windows:
+            return []
+        live = {c["opportunity_id"] for c in self.e.storage.campaigns() if State(c["state"]) not in TERMINAL_STATES}
+        out = []
+        for row in self.e.storage.opportunities():
+            if not row["active"] or row["type"] != OpportunityType.MISSING_PLAYER.value:
+                continue
+            opp = Opportunity.model_validate(row["payload"])
+            if opp.organizer_name or opp.opportunity_id in live or not p.is_free(opp.start, opp.end):
+                continue
+            if opp.start - now < timedelta(minutes=policy.timing.min_lead_time_minutes):
+                continue
+            if self._join_block(opp, p, snap, policy):
+                continue
+            out.append({"opportunity_id": opp.opportunity_id, "court": opp.court_name,
+                        "when": f"{relative_day(opp.start, now)} · {range_label(opp.start, opp.end)}",
+                        "level": level_label(opp.level_target), "players": f"{len(opp.present_player_ids)} of 4",
+                        "price": price_per_player(policy)})
+        return sorted(out, key=lambda g: g["when"])
+
+    @staticmethod
+    def _join_block(opp: Opportunity, p, snap, policy) -> str | None:
+        """Why this player can't join, using the same rules as invites. The weekly invite limit and an
+        unanswered invite elsewhere don't apply: the player is asking, not being messaged."""
+        res = filter_eligible(opp, [p], snap, policy)
+        blocking = [x for x in res.exclusions if x.reason_code not in ("CONTACT_CAP", "PENDING_INVITE")]
+        return blocking[0].detail if blocking else None
+
+    def self_join(self, pid: str, opp_id: str) -> str:
+        p = self._profile(pid)
+        if not any(g["opportunity_id"] == opp_id for g in self.games_that_fit(pid)):
+            raise PlayerError("That game isn't open to you any more. Here's what's left.")
+        opp = self.e.opportunity(opp_id)
+        if self.e.provider.health() != "ok":
+            raise PlayerError("The booking system isn't answering right now. You have not been charged.")
+        match = self.e.provider.get_match(opp.match_id)   # fresh check, not the cached snapshot
+        if match is None or match.open_seats == 0:
+            self.e.refresh()
+            raise PlayerError("Someone just took that spot. You have not been charged.")
+        self.e.provider.simulate_seat_filled(opp.match_id, pid, "paid")
+        after = self.e.provider.get_match(opp.match_id)
+        verified = after is not None and pid in after.player_ids and after.payment_status == \
+            self.e.policy().booking.required_payment_status
+        window = next((a for a in self.e.storage.availability(self.e.now(), pid)
+                       if a["start"] <= opp.start and opp.end <= a["end"]), None)
+        with self.e.storage.connect() as conn:
+            if window:
+                self.e.storage.set_availability_status(conn, window["avail_id"], "joined")
+        self._log("PLAYER_SELF_JOINED", pid, {"match_id": opp.match_id, "verified": verified, "simulated": True,
+                                              "amount_usd": price_per_player(self.e.policy()),
+                                              "note": "player joined from 'I'm free'; booking system checked"},
+                  opportunity_id=opp_id)
+        self.e.refresh()
+        if not verified:
+            return "Your booking hasn't shown up as paid yet. The club will check it."
+        return f"You're in: {opp.court_name}, {range_label(opp.start, opp.end)}. Booked and paid."

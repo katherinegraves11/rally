@@ -158,6 +158,9 @@ class RallyEngine:
         now = now or self.now()
         overrides = self.storage.consent_overrides()
         settings = self.storage.player_settings()
+        free: dict[str, list] = {}
+        for a in self.storage.availability(now):
+            free.setdefault(a["player_id"], []).append((a["start"], a["end"]))
         times = self.storage.invite_times()
         pending: dict[str, str] = {}
         for c in self.storage.campaigns():
@@ -184,7 +187,7 @@ class RallyEngine:
                 preferred_bands=bands, played_with=_split(r.get("played_with")),
                 last_played_days_ago=int(r["last_played_days_ago"]) if r.get("last_played_days_ago") else None,
                 invites_last_7d=len(recent), pending_invite_campaign=pending.get(pid),
-                max_invites_per_week=s.get("max_invites_per_week"))
+                max_invites_per_week=s.get("max_invites_per_week"), free_windows=free.get(pid, []))
         return out
 
     def opportunity(self, opp_id: str) -> Opportunity:

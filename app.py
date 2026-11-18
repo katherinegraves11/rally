@@ -243,6 +243,19 @@ def _events_since(start) -> list[dict]:
     return [e for e in engine.storage.events() if e["sim_ts"] >= start.isoformat()]
 
 
+def _self_joins(events: list[dict]) -> int:
+    return sum(1 for e in events if e["event_type"] == "PLAYER_SELF_JOINED")
+
+
+def free_for(v: OpportunityView) -> int:
+    """Players who said "I'm free" in the player app for this game's time (and fit its level, for open matches)."""
+    tol = engine.policy().eligibility.skill_tolerance
+    o = v.opp
+    return sum(1 for p in engine.profiles().values()
+               if p.is_free(o.start, o.end) and p.player_id not in o.present_player_ids
+               and (o.level_target is None or abs(round(p.level - o.level_target, 2)) <= tol + 1e-9))
+
+
 def _confirmed_by_type(events: list[dict]) -> dict[str, int]:
     types = {c["campaign_id"]: c["type"] for c in engine.storage.campaigns()}
     out = {"EMPTY_COURT": 0, "MISSING_PLAYER": 0}
@@ -271,12 +284,14 @@ def header(status: str, mp_views: list[OpportunityView], ec_views: list[Opportun
     seat_price = slot_price / policy.club.players_per_court
     open_value = sum(slot_price if v.opp.type == OpportunityType.EMPTY_COURT else seat_price * v.opp.seats_needed
                      for v in views if v.state not in TERMINAL_STATES)
+    joins = _self_joins(today)
     tiles = [
         ("you", "Needs your OK", len(need), "approve or decide" if need else "nothing waiting"),
         ("", "Rally is working on", len(working), "invites out, waiting on players"),
-        ("won", "Filled today", filled["EMPTY_COURT"] + filled["MISSING_PLAYER"],
+        ("won", "Filled today", filled["EMPTY_COURT"] + filled["MISSING_PLAYER"] + joins,
          f"{filled['EMPTY_COURT']} court{'s' if filled['EMPTY_COURT'] != 1 else ''} · "
-         f"{filled['MISSING_PLAYER']} player{'s' if filled['MISSING_PLAYER'] != 1 else ''} replaced"),
+         f"{filled['MISSING_PLAYER']} player{'s' if filled['MISSING_PLAYER'] != 1 else ''} replaced · "
+         f"{joins} joined from \"I'm free\""),
         ("", "Still open today", f"${open_value:,.0f}", "court time at list price, not revenue"),
     ]
     st.markdown("<div class='today'>" + "".join(
@@ -290,6 +305,7 @@ def header(status: str, mp_views: list[OpportunityView], ec_views: list[Opportun
     st.markdown(
         f"<div class='week'><b>This week:</b> {wf['EMPTY_COURT']} empty court{'s' if wf['EMPTY_COURT'] != 1 else ''} "
         f"filled · {wf['MISSING_PLAYER']} player{'s' if wf['MISSING_PLAYER'] != 1 else ''} replaced · "
+        f"{_self_joins(week)} joined from \"I'm free\" · "
         f"{sent} invite{'s' if sent != 1 else ''} sent · {optouts} opt-out{'s' if optouts != 1 else ''} "
         f"<span class='small'>(simulated demo, not real results)</span></div>", unsafe_allow_html=True)
 
@@ -414,6 +430,10 @@ def detail(v: OpportunityView) -> None:
     st.markdown(f"{badge(v.state)}", unsafe_allow_html=True)
     stepper(v)
     st.markdown(opp_summary(v))
+    n_free = free_for(v)
+    if n_free and v.state not in TERMINAL_STATES:
+        st.markdown(f"🙋 **{n_free} player{'s' if n_free != 1 else ''} said they're free then** in the player app. "
+                    "They're marked in the list below.")
     if v.state_reason and v.campaign is not None:
         st.caption(plain(v.state_reason))
     if v.opp.type == OpportunityType.MISSING_PLAYER:

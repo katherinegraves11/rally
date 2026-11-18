@@ -116,6 +116,11 @@ class PlayerProfile(BaseModel):
     pending_invite_campaign: Optional[str] = None
     # Personal weekly invite limit set in the player app; the effective cap is min(club cap, this).
     max_invites_per_week: Optional[int] = None
+    # Active "I'm free" windows from the player app: (start, end) pairs in club time.
+    free_windows: list[tuple[datetime, datetime]] = Field(default_factory=list)
+
+    def is_free(self, start: datetime, end: datetime) -> bool:
+        return any(ws <= start and end <= we for ws, we in self.free_windows)
 
     def invite_cap(self, club_cap: int) -> int:
         return min(club_cap, self.max_invites_per_week) if self.max_invites_per_week else club_cap

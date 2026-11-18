@@ -184,6 +184,39 @@ def opt(pid: str, on: str = Form(...)):
     return _back(pid, "/settings", msg="Invites are on" if on == "1" else "Invites are off. You won't get any more.")
 
 
+@app.post("/p/{pid}/free")
+def post_free(pid: str, day: str = Form(...), start: int = Form(...), end: int = Form(...)):
+    with _lock:
+        _ensure()
+        try:
+            side.post_free(pid, day, start, end)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, err=str(exc))
+    return _back(pid, msg="Got it. Here's what fits, and you'll move up the list for games that come up.")
+
+
+@app.post("/p/{pid}/free/{avail_id}/cancel")
+def cancel_free(pid: str, avail_id: int):
+    with _lock:
+        _ensure()
+        try:
+            side.cancel_free(pid, avail_id)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, err=str(exc))
+    return _back(pid, msg="Cancelled.")
+
+
+@app.post("/p/{pid}/join/{opp_id}")
+def join(pid: str, opp_id: str):
+    with _lock:
+        _ensure()
+        try:
+            msg = side.self_join(pid, opp_id)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, err=str(exc))
+    return _back(pid, msg=msg)
+
+
 @app.get("/api/p/{pid}/version")
 def version(pid: str):
     with _lock:

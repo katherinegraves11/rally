@@ -1,7 +1,7 @@
 {
   "meta": {
     "run": "offline",
-    "generated_at": "2026-11-17T12:28:08",
+    "generated_at": "2026-11-17T19:46:36",
     "parser": "Offline rules (no LLM)",
     "cases": 20,
     "executed": 20,

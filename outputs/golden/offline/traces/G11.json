@@ -2,12 +2,12 @@
   "case_id": "G11",
   "title": "Fresh booking data stops stale outreach",
   "run": "offline",
-  "generated_at": "2026-11-17T12:28:08",
+  "generated_at": "2026-11-17T19:46:35",
   "parser": "Offline rules (no LLM)",
   "llm_mode": "offline",
   "model": "rules",
-  "policy_version": "0.1.0-provisional (2026-11-05)",
-  "policy_sha256": "fc4403cb277d",
+  "policy_version": "0.1.1-provisional (2026-11-17)",
+  "policy_sha256": "80ab05ce6229",
   "fixture_mapping": {
     "M17": "Rally demo match M-OPEN-1730-C2 (opportunity MP-M-OPEN-1730-C2): Court 2, Tue Nov 10 2026 5:30-7:00 PM ET, 3/4 seats, level 3.5 with ±0.3 tolerance (3.2-3.8). Golden spec: Thu Nov 12, band 3.0-3.6. Booking link is Rally's simulated https://booking.example.com/rally/... (spec: demo://match/M17).",
     "E21": "Rally demo opportunity EC-20261110-1430-C1: Court 1, Tue Nov 10 2026 2:30-4:00 PM ET, typical occupancy 20%. Golden spec: Tue Nov 17.",
@@ -181,7 +181,7 @@
       "to_state": null,
       "detail": {
         "club": "Northpoint Padel",
-        "policy_sha256": "fc4403cb277d",
+        "policy_sha256": "80ab05ce6229",
         "data": "fictional players; occupancy profile from the club spreadsheet"
       }
     },

@@ -43,6 +43,25 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
    their own share; the court counts as booked only when all four have paid and the provider
    shows the booking.
 
+5. **"I'm free" (added 2026-11-17, Katie's call after the first review).** A solo player with no group
+   ("I want to play at 6 tonight and have no one", Mia in the midpoint doc) can raise their hand
+   instead of only waiting for an invite. They pick today or tomorrow and a time range.
+   - **Right away:** they see open seats in club open matches that fit their level and time, and
+     can join one (book and pay their share through the simulated club booking app). A game where
+     Rally is already asking specific players is not shown, so Rally never races its own invites;
+     organiser games are not shown, because the organiser chooses who joins.
+   - **For games that come up:** while the window is open they move up the list for matching games
+     (a visible "said they're free then" bonus from the club's rules file). The manager or
+     organiser still approves every invite, and the weekly limit still applies.
+   - **For empty courts:** free players at the same level and time push that court's group to the
+     top, and the dashboard shows how many players said they're free for each opportunity, which
+     is a demand signal the club doesn't have today.
+   - Posting "I'm free" needs invites on (it is consent to be contacted in that window). It ends
+     at the end of the window, or when they cancel it or join a game. Joining checks the booking
+     system first and counts only once the booking system lists them as paid.
+   This keeps Rally out of Playtomic's marketplace job (browsing every open match): it only shows
+   games that fit this player now.
+
 ## Engine additions (`rally/`)
 
 | Change | Where | Rule it keeps |
@@ -54,6 +73,9 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
 | `player_payments` table; group booking created with the provider only when every held player has paid | `storage.py`, `engine.py` | No CONFIRMED without provider verification |
 | Every player-side change is an audit event (`PLAYER_SETTINGS_UPDATED`, `CONSENT_GRANTED`, `ORGANISER_AUTHORISED`, `PLAYER_PAID`) | `engine.py` | Append-only log |
 | G16 fix: approved backups invited when the first wave cannot fill a court | `coordinator.py` | Only approved players, within max sends |
+| `player_availability` table; active windows on `PlayerProfile.free_windows` | `storage.py`, `engine.profiles()` | Consent required to post |
+| "Free then" ranking bonus (`ranking.free_bonus` in the policy) | `ranking.py`, `club_policy.yaml` | Transparent, rule-based ranking |
+| Self-join: fresh booking-system check, then the booking system lists them as paid | `player_side.py` | No count without the booking system |
 
 Organisers: `data/match_organizers.csv` (fictional) names the organiser of each private match.
 
@@ -66,5 +88,5 @@ Organisers: `data/match_organizers.csv` (fictional) names the organiser of each 
 
 ## Not in this build
 
-Real sign-in (the demo picks a fictional player), real payments, real SMS/WhatsApp, browsing all
-open matches (Rally reaches out; it is not a marketplace), push notifications.
+Real sign-in (the demo picks a fictional player), real payments, real SMS/WhatsApp, browsing every
+open match at the club (that is Playtomic's job; "I'm free" shows only games that fit), push notifications.

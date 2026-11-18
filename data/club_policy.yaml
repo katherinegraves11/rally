@@ -3,7 +3,7 @@
 # Every value below is a PROVISIONAL demo setting from PRD section 8. Nothing here has been
 # approved by the team or by a club yet. Change a value and bump policy_version.
 
-policy_version: "0.1.0-provisional (2026-11-05)"
+policy_version: "0.1.1-provisional (2026-11-17)"
 status: provisional
 
 club:
@@ -73,6 +73,9 @@ ranking:
     activity: 0.15
     freshness: 0.10
   time_fit_when_not_preferred: 0.2
+  # Added 0.1.1: a player who tapped "I'm free" for a window covering the game gets time_fit 1.0
+  # plus this many points (out of 100), shown in the shortlist as "said they're free then".
+  free_bonus: 15
 
 escalation:
   intents_requiring_manager: [TENTATIVE, QUESTION, ALTERNATIVE_TIME, UNKNOWN]
