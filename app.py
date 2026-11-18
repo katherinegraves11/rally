@@ -361,18 +361,20 @@ def requests_panel() -> None:
                 if r["kind"] == "dropout_club":
                     who = engine.profiles().get(r["note"])
                     what = f"says **{who.name if who else 'a player'}** dropped out of"
+                elif r["kind"] == "link_booking":
+                    what = (f"says this club booking is theirs (a player dropped out; me + {r['note']} still coming):")
                 else:
                     what = {"empty_court": "is interested in the empty court",
                             "fill_club": "is booked in, and asked you to find a 4th for"}.get(r["kind"], "asked to join")
                 c1.markdown(f"**{r['name']}** (level {r['player_level']}) {what} **{r['court']}, {r['when']}**"
-                            + (f" · game level {r['level']}, {r['players']}" if r["kind"] != "empty_court" else ""))
+                            + (f" · game level {r['level']}, {r['players']}" if r["kind"] not in ("empty_court", "link_booking") else ""))
                 if r["kind"] == "fill_club":
                     if c1.button("Open this game ↓", key=f"open_fill_{r['request_id']}"):
                         st.session_state[f"sel_{OpportunityType.MISSING_PLAYER.value}"] = f"MP-{r['target_id']}"
                         st.session_state["flash"] = ("requests", "success",
                                                      "Opened below under Players needed: approve who Rally asks.")
                         st.rerun()
-                if r["note"] and r["kind"] != "dropout_club":
+                if r["note"] and r["kind"] not in ("dropout_club", "link_booking"):
                     c1.markdown(f"<span class='small'>Their note: “{r['note']}”</span>", unsafe_allow_html=True)
                 late = r["status"] == "pending" and r["waited_min"] > r["target_min"]
                 c1.markdown(f"<span class='small'>{'⏰ ' if late else ''}Waiting {r['waited_min']} min "
@@ -384,7 +386,9 @@ def requests_panel() -> None:
                            [("acknowledge", "👍 On it"), ("decline", "We'll handle it at the desk")]
                            if r["kind"] == "fill_club" else
                            [("confirm", "✅ Confirm dropout"), ("decline", "Not true")]
-                           if r["kind"] == "dropout_club" else [("approve", "✅ Let them in"), ("decline", "Not this time")])
+                           if r["kind"] == "dropout_club" else
+                           [("confirm", "✅ Yes, it's theirs"), ("decline", "Not theirs")]
+                           if r["kind"] == "link_booking" else [("approve", "✅ Let them in"), ("decline", "Not this time")])
                 if r["status"] == "acknowledged":
                     choices = [c for c in choices if c[0] != "acknowledge"]
                 cols = c2.columns(len(choices))
@@ -394,6 +398,8 @@ def requests_panel() -> None:
                         try:
                             msg = (side.decide_dropout_report(r["request_id"], decision, f"manager:{engine.MANAGER}")
                                    if r["kind"] == "dropout_club" else
+                                   side.decide_link(r["request_id"], decision, f"manager:{engine.MANAGER}")
+                                   if r["kind"] == "link_booking" else
                                    side.decide_request(r["request_id"], decision, f"manager:{engine.MANAGER}"))
                             st.session_state["flash"] = ("requests", "success", msg)
                         except PlayerError as exc:

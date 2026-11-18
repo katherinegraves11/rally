@@ -140,6 +140,7 @@ class PlayerSide:
             "provider_ok": self.e.provider_status == "ok",
             "free": self.free_status(pid),
             "start": self.start_options(pid),
+            "linkable": self.linkable_bookings(pid), "link_requests": self.my_link_requests(pid),
             "org_requests": self.pending_requests(organiser_id=pid) if self.e.organized_by(pid) else [],
         }
 
@@ -316,6 +317,7 @@ class PlayerSide:
                             "organiser": self.e.organizer_of(m.match_id) == pid,
                             "via_rally": m.created_by == "rally_handoff" or m.match_id in joined,
                             "unread_chat": unread_chat.get(m.match_id, 0),
+                            "club_booking": m.created_by == "seed" and m.kind == "private",
                             "time": range_label(m.start, m.end), "day": relative_day(m.start, now)})
         return out
 
@@ -332,6 +334,8 @@ class PlayerSide:
             opp_id = f"MP-{match_id}"
             camps = self.e.storage.campaigns(opp_id)
             latest = camps[-1] if camps else None
+            if m.open_seats == 0 and latest is None and match_id not in auths:
+                continue   # a full booking with nothing happening: it's under Your games, no extra card
             card = OrganiserCard(
                 match_id=match_id, title=f"Your game · {relative_day(m.start, now)} {time_label(m.start)}",
                 when=f"{relative_day(m.start, now)} · {range_label(m.start, m.end)}",
@@ -765,7 +769,7 @@ class PlayerSide:
         """Requests the player made that are still worth showing (open, or decided in the last day)."""
         out = []
         for r in self.e.storage.requests(player_id=pid):
-            if r["status"] == "withdrawn" or r["kind"] in self.FILL_KINDS + ("dropout_club",):
+            if r["status"] == "withdrawn" or r["kind"] in self.FILL_KINDS + ("dropout_club", "link_booking"):
                 continue
             info = self._target_info(r)
             if info is None or info["start"] <= self.e.now():
@@ -1420,3 +1424,89 @@ class PlayerSide:
         self.e._log("ORGANISER_CREDITED", actor="code", tool="player_app",
                     detail={"match_id": match_id, "organiser": org.player_id, "from_player": payer,
                             "amount_usd": amount, "simulated": True})
+
+
+    # ---- games already booked through the club: link a booking the club system doesn't show players for --
+    def linkable_bookings(self, pid: str) -> list[dict]:
+        """Club bookings in the next 24 hours whose players the club system doesn't share, that no one has linked
+        or asked to link yet. The player picks theirs; the club confirms."""
+        now = self.e.now()
+        if self.e.provider_status != "ok":
+            return []
+        taken = {r["target_id"] for r in self.e.storage.requests() if r["kind"] == "link_booking"
+                 and r["status"] in ("pending", "approved")}
+        out = []
+        for m in self.e.provider.all_matches():
+            if m.kind != "private" or m.players_known or m.match_id in taken:
+                continue
+            if not (now + timedelta(minutes=60) <= m.start <= now + timedelta(hours=24)):
+                continue
+            out.append({"value": m.match_id, "start": m.start,
+                        "label": f"{relative_day(m.start, now).capitalize()} {range_label(m.start, m.end)} · "
+                                 f"Court {m.court_id[1:]}"})
+        return sorted(out, key=lambda x: x["start"])
+
+    def my_link_requests(self, pid: str) -> list[dict]:
+        out = []
+        for r in self.e.storage.requests(player_id=pid):
+            if r["kind"] != "link_booking" or r["status"] not in ("pending", "declined"):
+                continue
+            m = self.e.provider.get_match(r["target_id"]) if self.e.provider_status == "ok" else None
+            if m is None or m.start <= self.e.now():
+                continue
+            by = time_label(datetime.fromisoformat(r["created_at"])
+                            + timedelta(minutes=self.e.policy().club.request_reply_minutes))
+            out.append({"request_id": r["request_id"], "status": r["status"],
+                        "label": f"Court {m.court_id[1:]}, {relative_day(m.start, self.e.now())} {range_label(m.start, m.end)}",
+                        "answer_by": by})
+        return out
+
+    def request_link(self, pid: str, match_id: str, coming: int) -> None:
+        p = self._profile(pid)
+        if p.opt_in_status != "opted_in":
+            raise PlayerError("Turn invites on first, so the club can reply and Rally can help.")
+        if coming not in (1, 2):
+            raise PlayerError("Say how many friends are still coming: 1 or 2.")
+        if match_id not in {b["value"] for b in self.linkable_bookings(pid)}:
+            raise PlayerError("That booking isn't available to link. Pick another, or ask at the front desk.")
+        with self.e.storage.connect() as conn:
+            rid = self.e.storage.add_request(conn, pid, match_id, "link_booking", str(coming), self.e.now())
+        self._log("PLAYER_LINK_REQUEST", pid, {"request_id": rid, "match_id": match_id, "friends_still_coming": coming,
+                                               "goes_to": "club (confirms the booking is theirs)"})
+
+    def decide_link(self, request_id: int, decision: str, decided_by: str) -> str:
+        r = self.e.storage.get_request(request_id)
+        if r is None or r["kind"] != "link_booking" or r["status"] != "pending":
+            raise PlayerError("That request has already been handled.")
+        p = self._profile(r["player_id"])
+        m = self.e.provider.get_match(r["target_id"])
+        now = self.e.now()
+        if decision == "confirm":
+            if m is None or m.players_known:
+                raise PlayerError("That booking already lists its players.")
+            friends = int(r["note"] or "1")
+            guests = [f"GUEST-{m.match_id}-{i + 1}" for i in range(friends)]
+            # the club booking has no level; the owner's level keeps Rally's invites at the right level
+            self.e.provider.link_booking(m.match_id, [p.player_id] + guests,
+                                         f"Club booking linked to {p.name} in Rally (one player dropped out)",
+                                         level=round(p.level, 1))
+            with self.e.storage.connect() as conn:
+                self.e.storage.add_player_booking(conn, m.match_id, p.player_id, friends, 0.0, now)
+            status = "approved"
+            body = (f"Thanks {p.first_name}: the club confirmed your Court {m.court_id[1:]} booking "
+                    f"({range_label(m.start, m.end)}). It's in Rally now. Tap Find someone for me to fill the open spot. "
+                    "Nothing new to pay.")
+        elif decision == "decline":
+            status = "declined"
+            body = (f"Thanks {p.first_name}. The club couldn't match that booking to you. Please check at the "
+                    "front desk.")
+        else:
+            raise PlayerError("Choose confirm or decline.")
+        with self.e.storage.connect() as conn:
+            self.e.storage.set_request(conn, request_id, status, now, decided_by=decided_by)
+            self.e.messaging.send(conn, campaign_id=None, invite_id=None, player_id=p.player_id,
+                                  channel=p.opt_in_channel, kind="request_" + status, body=body, now=now)
+        self.e._log("BOOKING_LINK_" + status.upper(), actor=decided_by, tool="player_requests",
+                    detail={"request_id": request_id, "match_id": r["target_id"], "player_id": p.player_id})
+        self.e.refresh()
+        return f"Linked to {p.first_name}; they can now find a 4th." if status == "approved" else f"{p.first_name} has been told."

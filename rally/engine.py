@@ -102,9 +102,14 @@ class RallyEngine:
             return {r["match_id"]: r["organizer_id"] for r in csv.DictReader(f)}
 
     def _all_organizers(self) -> dict[str, str]:
-        """Fixture organisers plus players who booked a court in the player app (Start a game)."""
-        out = dict(self._organizers)
+        """Who owns each private booking. Lowest to highest precedence: the club booking system's owner (the mock
+        provider has no owner field, so the first listed player stands in for it), bookings made or linked in the
+        player app, then the fixture organisers."""
+        out = {m.match_id: m.player_ids[0] for m in self.provider.all_matches()
+               if m.kind == "private" and m.players_known and m.player_ids and m.created_by == "seed"
+               and m.player_ids[0] in self._players}
         out.update({m: b["organizer_id"] for m, b in self.storage.player_bookings().items()})
+        out.update(self._organizers)
         return out
 
     def organizer_of(self, match_id: str) -> str | None:

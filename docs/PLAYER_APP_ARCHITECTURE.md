@@ -167,6 +167,22 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
       **club confirms it** on the dashboard before anything changes, so one player can't remove
       another by mistake.
 
+12. **Games already booked through the club (added 2026-11-17, Katie: "they already paid and booked;
+    they don't want to double").** Rally never rebooks or recharges an existing booking; it only helps
+    replace the missing player.
+    - **The booking owner** is the player the club's booking system names as owner (Playtomic's data
+      has one; the mock provider has no owner field, so Rally treats the first listed player as owner).
+      Fixture organisers and "Start a game" bookings take precedence.
+    - **Visible bookings** (the club system lists the players) already show under Your games, labelled
+      "Booked through the club". The owner gets "Someone dropped out" and "Find someone for me" on it.
+    - **Bookings the club system doesn't share players for** ("Court 4, 7 PM, booked"): under
+      **Need a 4th? → Already booked through the club? Find my booking**, the player picks their
+      booking (next 24 hours) and says how many are still coming. The **club confirms on the dashboard**
+      that it's theirs; Rally then links it (owner + guests, the owner's level as the game level, already
+      paid, no new charge) and the owner
+      uses "Find someone for me". New players pay their $30 share as usual, credited to the owner.
+    - Owners' full games with nothing happening don't get an organiser card (no clutter).
+
 ## Engine additions (`rally/`)
 
 | Change | Where | Rule it keeps |

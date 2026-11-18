@@ -297,6 +297,17 @@ def post_chat(pid: str, match_id: str, text: str = Form("")):
     return RedirectResponse(f"/p/{pid}/game/{match_id}#chat-end", status_code=303)
 
 
+@app.post("/p/{pid}/link")
+def link_booking(pid: str, match_id: str = Form(...), coming: int = Form(...)):
+    with _lock:
+        _ensure()
+        try:
+            side.request_link(pid, match_id, coming)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, err=str(exc))
+    return _back(pid, msg="Sent to the club. Once they confirm it's yours, you can choose who Rally asks.")
+
+
 @app.post("/p/{pid}/start")
 def start_game(pid: str, slot: str = Form(...), friends: int = Form(...), level: float = Form(...)):
     with _lock:

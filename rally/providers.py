@@ -173,6 +173,12 @@ class MockBookingProvider:
                          (match_id, court_id, start.isoformat(), end.isoformat(), "private", level,
                           json.dumps(player_ids), 1, 4, "confirmed", "paid", "[]", "player_app", note))
 
+    def link_booking(self, match_id: str, player_ids: list[str], note: str, level: float | None = None) -> None:
+        """The club confirmed whose booking this is: it now lists the owner (and their guests) as players."""
+        with self._conn() as conn:
+            conn.execute("UPDATE matches SET player_ids = ?, players_known = 1, note = ?, level = COALESCE(level, ?) "
+                         "WHERE match_id = ?", (json.dumps(player_ids), note, level, match_id))
+
     def simulate_player_dropout(self, match_id: str, player_id: str, note: str) -> None:
         """A booked player cancelled: the provider frees their seat and records them as dropped out."""
         with self._conn() as conn:

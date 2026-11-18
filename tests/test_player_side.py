@@ -621,3 +621,46 @@ def test_new_player_share_is_credited_back_to_the_organiser(engine, side):
     credits = [e for e in engine.storage.events() if e["event_type"] == "ORGANISER_CREDITED"]
     assert len(credits) == 1 and credits[0]["detail"]["amount_usd"] == 30
     assert any(n["title"] == "A new player paid their share" for n in side.notifications(AMA))
+
+
+# ---- games already booked through the club ----------------------------------------------------------------
+CLUB_PRIV = "M-PRIV-1730-C1"   # private club booking, players listed: Aisha (P013, first = owner), P016, P017, P018
+
+
+def test_owner_of_a_visible_club_booking_replaces_a_dropout_without_rebooking(engine, side):
+    assert engine.organizer_of(CLUB_PRIV) == "P013"
+    assert not side.organiser_cards("P013")                                # full and quiet: no extra card
+    g = next(g for g in side.games("P013") if g["match_id"] == CLUB_PRIV)
+    assert g["club_booking"]
+    assert side.game_page("P013", CLUB_PRIV)["report_mode"] == "now"
+    side.report_dropout("P013", CLUB_PRIV, "P016")                         # Maria texted Aisha she can't come
+    card = side.organiser_cards("P013")[0]
+    assert card.stage == "ask"                                             # straight to Find someone for me
+    payments_before = [e for e in engine.storage.events() if e["event_type"] in ("PLAYER_BOOKED_COURT",)]
+    assert not payments_before                                             # nothing rebooked or recharged
+
+
+def test_unshared_club_booking_is_linked_after_the_club_confirms(engine, side):
+    options = side.linkable_bookings(AMA)
+    assert options                                                         # club bookings with players not shared
+    target = options[0]["value"]
+    side.request_link(AMA, target, 2)
+    assert target not in {b["value"] for b in side.linkable_bookings("P026")}   # nobody else can claim it now
+    req = [r for r in side.pending_requests() if r["kind"] == "link_booking"][0]
+    assert engine.organizer_of(target) != AMA                              # nothing changes before the club confirms
+    side.decide_link(req["request_id"], "confirm", "manager:test")
+    m = engine.provider.get_match(target)
+    assert m.players_known and m.player_ids[0] == AMA and m.open_seats == 1
+    assert m.level == 2.2                                                  # owner's level, so invites fit
+    assert engine.organizer_of(target) == AMA
+    assert side.organiser_cards(AMA)[0].stage == "ask"
+    assert engine.storage.player_bookings()[target]["court_fee_usd"] == 0  # already paid through the club
+
+
+def test_club_can_say_a_linked_booking_isnt_theirs(engine, side):
+    target = side.linkable_bookings(AMA)[0]["value"]
+    side.request_link(AMA, target, 1)
+    req = [r for r in side.pending_requests() if r["kind"] == "link_booking"][0]
+    side.decide_link(req["request_id"], "decline", "manager:test")
+    assert not engine.provider.get_match(target).players_known
+    assert side.my_link_requests(AMA)[0]["status"] == "declined"
