@@ -3,7 +3,7 @@
 # Every value below is a PROVISIONAL demo setting from PRD section 8. Nothing here has been
 # approved by the team or by a club yet. Change a value and bump policy_version.
 
-policy_version: "0.1.3-provisional (2026-11-17)"
+policy_version: "0.1.4-provisional (2026-11-18)"
 status: provisional
 
 club:
@@ -17,9 +17,8 @@ club:
   chat_open_hours_after: 3         # game chat closes 3 hours after the game ends (added 0.1.2)
   request_reply_minutes: 30        # added 0.1.3: target time for the club to answer a player's request
 
-cancellation:                      # added 0.1.3 (Katie): dropping out late costs a fee. PROVISIONAL values.
-  free_until_hours_before: 24      # cancel at least this long before the game: no fee
-  late_fee_usd: 30                 # inside that window: this fee (one player's share), simulated
+# 0.1.4: no Rally cancellation fee. Leaving, cancelling and refunds follow Playtomic's rules and the club's
+# own cancellation window in Playtomic (docs/PLAYER_APP_ARCHITECTURE.md, "The Playtomic connection").
 
 schedule:
   # Opening hours and off-peak windows come from data/occupancy_profile.csv
@@ -69,7 +68,9 @@ approval:
 booking:
   verification: mock_provider_verified
   required_payment_status: paid
-  booking_link_base: "https://booking.example.com/rally"   # simulated link (example.com is reserved)
+  # Simulated link. A real invite would carry the match's share link from the Playtomic app; the Third Party
+  # API doesn't provide one, so the club or owner shares it (example.com is reserved for examples).
+  booking_link_base: "https://playtomic-match.example.com"
 
 ranking:
   # Transparent, rule-based weights (D05: no ML predictions in HW2). Each feature is 0..1.

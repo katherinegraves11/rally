@@ -63,8 +63,28 @@ class MockBookingProvider:
         fresh = not self.db_path.exists()
         with self._conn() as conn:
             conn.executescript(PROVIDER_SCHEMA)
+            self._needs_backfill = False
+            self._migrate(conn)
         if fresh:
             self._seed()
+        elif self._needs_backfill:
+            self._backfill_playtomic_fields()
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """Add Playtomic's owner_id / booking_type to an older demo database, and backfill them."""
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(matches)").fetchall()}
+        if "owner_id" in cols:
+            return
+        conn.execute("ALTER TABLE matches ADD COLUMN owner_id TEXT")
+        conn.execute("ALTER TABLE matches ADD COLUMN booking_type TEXT NOT NULL DEFAULT 'REGULAR_BOOKING'")
+        self._needs_backfill = True
+
+    def _fixture_organisers(self) -> dict[str, str]:
+        path = self.data_dir / "match_organizers.csv"
+        if not path.exists():
+            return {}
+        with open(path, newline="", encoding="utf-8") as f:
+            return {r["match_id"]: r["organizer_id"] for r in csv.DictReader(f)}
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -91,12 +111,23 @@ class MockBookingProvider:
             with open(self.data_dir / "matches.csv", newline="", encoding="utf-8") as f:
                 for r in csv.DictReader(f):
                     conn.execute(
-                        "INSERT INTO matches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "INSERT INTO matches (match_id, court_id, start, end, kind, level, player_ids, players_known, capacity, status, payment_status, dropout_player_ids, created_by, note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (r["match_id"], r["court_id"], r["start"], r["end"], r["kind"],
                          float(r["level"]) if r["level"] else None, json.dumps(_split(r["player_ids"])),
                          1 if r["players_known"] == "True" else 0, int(r["capacity"]), r["status"],
                          r["payment_status"], json.dumps(_split(r["dropout_player_ids"])), r["created_by"], r["note"]))
             conn.execute("INSERT OR REPLACE INTO flags VALUES ('outage', '0')")
+        self._backfill_playtomic_fields()   # owner_id / booking_type the way Playtomic reports them
+
+    def _backfill_playtomic_fields(self) -> None:
+        organisers = self._fixture_organisers()
+        with self._conn() as conn:
+            for r in conn.execute("SELECT match_id, kind, player_ids, players_known, created_by FROM matches").fetchall():
+                players = json.loads(r["player_ids"])
+                owner = organisers.get(r["match_id"]) or (players[0] if r["kind"] == "private" and r["players_known"]
+                                                          and players and r["created_by"] == "seed" else None)
+                conn.execute("UPDATE matches SET owner_id = ?, booking_type = ? WHERE match_id = ?",
+                             (owner, "OPEN_MATCH" if r["kind"] == "club_open" else "REGULAR_BOOKING", r["match_id"]))
 
     @staticmethod
     def _match(row: sqlite3.Row) -> Match:
@@ -106,7 +137,7 @@ class MockBookingProvider:
             player_ids=json.loads(row["player_ids"]), players_known=bool(row["players_known"]),
             capacity=row["capacity"], status=row["status"], payment_status=row["payment_status"],
             dropout_player_ids=json.loads(row["dropout_player_ids"]), created_by=row["created_by"],
-            note=row["note"] or "")
+            note=row["note"] or "", owner_id=row["owner_id"], booking_type=row["booking_type"] or "REGULAR_BOOKING")
 
     def _check_up(self) -> None:
         if self.health() != "ok":
@@ -169,9 +200,15 @@ class MockBookingProvider:
                               player_ids: list[str], level: float, note: str) -> None:
         """A player booked and paid for a court in the club's booking app (simulated)."""
         with self._conn() as conn:
-            conn.execute("INSERT INTO matches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            conn.execute("INSERT INTO matches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                          (match_id, court_id, start.isoformat(), end.isoformat(), "private", level,
-                          json.dumps(player_ids), 1, 4, "confirmed", "paid", "[]", "player_app", note))
+                          json.dumps(player_ids), 1, 4, "confirmed", "paid", "[]", "player_app", note,
+                          player_ids[0], "REGULAR_BOOKING"))
+
+    def simulate_convert_to_public(self, match_id: str) -> None:
+        """The owner tapped 'Convert to Public Match' in Playtomic: the booking becomes an OPEN_MATCH."""
+        with self._conn() as conn:
+            conn.execute("UPDATE matches SET booking_type = 'OPEN_MATCH' WHERE match_id = ?", (match_id,))
 
     def link_booking(self, match_id: str, player_ids: list[str], note: str, level: float | None = None) -> None:
         """The club confirmed whose booking this is: it now lists the owner (and their guests) as players."""
@@ -200,31 +237,21 @@ class MockBookingProvider:
         """The group used the booking link: the provider now shows a booking for the court."""
         booking_id = f"B-RALLY-{start:%Y%m%d-%H%M}-{court_id}"
         with self._conn() as conn:
-            conn.execute("INSERT OR REPLACE INTO matches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            conn.execute("INSERT OR REPLACE INTO matches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                          (booking_id, court_id, start.isoformat(), end.isoformat(), "private", None,
                           json.dumps(player_ids), 1, 4, "confirmed", payment_status, "[]", "rally_handoff",
-                          "Booked through Rally booking link (simulated)"))
+                          "Open match the club created in Playtomic Manager for a Rally group (simulated)",
+                          None, "OPEN_MATCH"))
         return booking_id
 
     def simulate_external_booking(self, court_id: str, start: datetime, end: datetime) -> str:
         """Another customer booked the court directly, so Rally's view is now stale."""
         booking_id = f"B-EXT-{start:%Y%m%d-%H%M}-{court_id}"
         with self._conn() as conn:
-            conn.execute("INSERT OR REPLACE INTO matches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            conn.execute("INSERT OR REPLACE INTO matches (match_id, court_id, start, end, kind, level, player_ids, players_known, capacity, status, payment_status, dropout_player_ids, created_by, note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                          (booking_id, court_id, start.isoformat(), end.isoformat(), "private", None, "[]", 0, 4,
                           "confirmed", "paid", "[]", "external", "Booked directly by another customer (simulated)"))
         return booking_id
 
 
-class PlaytomicProvider:  # pragma: no cover - future adapter boundary
-    """Placeholder for a real read-only Playtomic adapter.
-
-    Per the Playtomic API guide referenced in the PRD, the API is read-only: bookings and some player
-    details are exposed, and dedicated player-data endpoints are planned. Rally must never assume write
-    access; club authorisation and platform terms apply before any live use.
-    """
-
-    name = "playtomic"
-
-    def __init__(self, *_, **__):
-        raise NotImplementedError("Live Playtomic access is out of scope for HW2 (PRD D04).")
+# The real, read-only Playtomic adapter lives in rally/playtomic.py (same read interface as the mock).

@@ -140,7 +140,6 @@ class PlayerSide:
             "provider_ok": self.e.provider_status == "ok",
             "free": self.free_status(pid),
             "start": self.start_options(pid),
-            "linkable": self.linkable_bookings(pid), "link_requests": self.my_link_requests(pid),
             "org_requests": self.pending_requests(organiser_id=pid) if self.e.organized_by(pid) else [],
         }
 
@@ -209,7 +208,7 @@ class PlayerSide:
         booking_link = any(m["kind"] == "booking_link" for m in self.e.storage.messages(campaign["campaign_id"],
                                                                                         inv["player_id"]))
         if s == IS.BOOKED or (st == State.CONFIRMED and s == IS.ACCEPTED):
-            return "booked", "You're booked", "The club's booking system shows your spot as paid. See you on court."
+            return "booked", "You're booked", "Playtomic shows you in the game and paid. See you on court."
         if s == IS.SENT and st not in TERMINAL_STATES:
             return "invited", "You're invited", ("This game only happens once 4 players say yes and book. "
                                                  "Nobody is charged until then." if group else
@@ -225,15 +224,15 @@ class PlayerSide:
                     "know. Nothing has been charged.")
             if booking_link and not paid:
                 return "pay", "Book and pay your share", ("Your spot is held while you book. It's confirmed "
-                                                          "once the booking system shows it paid.")
+                                                          "once Playtomic shows it paid.")
             if paid:
                 if st == State.UNVERIFIED:
                     return "checking", "Checking your booking", (
-                        "The booking system isn't answering right now, so we can't confirm yet. "
+                        "Playtomic isn't answering right now, so we can't confirm yet. "
                         "We never mark a game booked without checking.")
                 return "paid_waiting", "Paid, waiting for the others" if group else "Checking your booking", (
                     f"{held} of {seats} players have said yes. The court is booked once everyone has paid."
-                    if group else "We're checking with the booking system.")
+                    if group else "We're checking with Playtomic.")
             return "waiting_group", f"You're in · {held} of {seats} so far", (
                 "Your spot is held. Once 4 players have said yes, everyone gets a link to book and pay.")
         if s == IS.DECLINED:
@@ -277,7 +276,7 @@ class PlayerSide:
         if pid in payments:
             raise PlayerError("You've already paid your share.")
         if self.e.provider_status != "ok":
-            raise PlayerError("The booking system isn't answering right now. Try again in a moment; you have "
+            raise PlayerError("Playtomic isn't answering right now. Try again in a moment; you have "
                               "not been charged.")
         amount = price_per_player(self.e.policy())
         with self.e.storage.connect() as conn:
@@ -291,9 +290,7 @@ class PlayerSide:
         paid = set(self.e.storage.payments(cid))
         if opp.type == OpportunityType.MISSING_PLAYER or set(held) <= paid:
             self.e.simulate_provider_confirmation(cid, payment_status="paid")
-            if opp.type == OpportunityType.MISSING_PLAYER and opp.match_id:
-                self._credit_organiser(opp.match_id, pid, amount)
-            return "Paid. The booking system now shows your booking; Rally checked it."
+            return "Paid. Playtomic now shows your booking; Rally checked it."
         self.e.refresh()
         return f"Paid. {len(paid)} of {len(held)} players have paid; the court is booked once everyone has."
 
@@ -351,19 +348,24 @@ class PlayerSide:
                 st = State(latest["state"])
                 if st == State.CONFIRMED:
                     card.stage, card.headline = "done", "Your game is full"
-                    card.detail = "The new player booked and paid, and the booking system confirmed it."
+                    card.detail = "The new player booked and paid, and Playtomic confirmed it."
                 elif st in TERMINAL_STATES:
                     card.stage, card.headline = "not_possible", "Rally couldn't fill it"
                     card.detail = "Nobody you approved could make it. Ask Rally again or find someone yourself."
                 else:
                     card.stage, card.headline = "running", "Rally is asking for you"
                     card.detail = ("One player at a time, in the order you chose. Nothing is booked until "
-                                   "they've paid and the booking system confirms it.")
+                                   "they've paid and Playtomic confirms it.")
             elif m.open_seats == 0:
                 card.stage, card.headline, card.detail = "done", "Your game is full", "All 4 spots are taken."
             elif auth and auth["mode"] == "self":
                 card.stage, card.headline = "self", "You're finding someone"
                 card.detail = "Rally is staying out of it. Changed your mind? Ask Rally instead."
+            elif auth and auth["mode"] == "rally" and m.booking_type != "OPEN_MATCH":
+                card.stage, card.headline = "convert", "Step 1: make it public in Playtomic"
+                card.detail = ("Only you can do this, in the Playtomic app: Convert to Public Match. It can't be "
+                               "undone, you pay for any spot left empty, and Playtomic opens it to every level, so "
+                               "Rally only invites players at your level.")
             elif auth and auth["mode"] == "rally":
                 if self.e.storage.get_opportunity(opp_id) is None or not lead_ok:
                     card.stage, card.headline = "not_possible", "Too close to start time"
@@ -445,6 +447,10 @@ class PlayerSide:
     def organiser_approve(self, pid: str, match_id: str, ordered_ids: list[str]) -> str:
         if self.e.organizer_of(match_id) != pid:
             raise PlayerError("Only the game's organiser can approve this.")
+        m = self.e.provider.get_match(match_id)
+        if m is None or m.booking_type != "OPEN_MATCH":
+            raise PlayerError("First make your booking public in Playtomic (Convert to Public Match), so the "
+                              "player Rally finds can join it.")
         if not ordered_ids:
             raise PlayerError("Pick at least one player Rally may ask.")
         opp_id = f"MP-{match_id}"
@@ -623,7 +629,7 @@ class PlayerSide:
             raise PlayerError("That game isn't open to you any more. Here's what's left.")
         opp = self.e.opportunity(opp_id)
         if self.e.provider.health() != "ok":
-            raise PlayerError("The booking system isn't answering right now. You have not been charged.")
+            raise PlayerError("Playtomic isn't answering right now. You have not been charged.")
         match = self.e.provider.get_match(opp.match_id)   # fresh check, not the cached snapshot
         if match is None or match.open_seats == 0:
             self.e.refresh()
@@ -639,7 +645,7 @@ class PlayerSide:
                 self.e.storage.set_availability_status(conn, window["avail_id"], "joined")
         self._log("PLAYER_SELF_JOINED", pid, {"match_id": opp.match_id, "verified": verified, "simulated": True,
                                               "amount_usd": price_per_player(self.e.policy()),
-                                              "note": "player joined from 'I'm free'; booking system checked"},
+                                              "note": "player joined from 'I'm free'; Playtomic checked"},
                   opportunity_id=opp_id)
         self.e.refresh()
         if not verified:
@@ -807,7 +813,7 @@ class PlayerSide:
         for r in self.e.storage.requests():
             if r["status"] not in ("pending", "acknowledged"):
                 continue
-            if organiser_id is None and r["kind"] in self.ORGANISER_KINDS:
+            if organiser_id is None and r["kind"] in self.ORGANISER_KINDS + ("link_booking",):
                 continue
             if organiser_id is not None and (r["kind"] != "organiser"
                                              or self.e.organizer_of(r["target_id"]) != organiser_id):
@@ -881,7 +887,7 @@ class PlayerSide:
         if r is None or r["player_id"] != pid or r["status"] != "approved" or r["kind"] == "empty_court":
             raise PlayerError("There's nothing to pay for here.")
         if self.e.provider.health() != "ok":
-            raise PlayerError("The booking system isn't answering right now. You have not been charged.")
+            raise PlayerError("Playtomic isn't answering right now. You have not been charged.")
         m = self.e.provider.get_match(r["target_id"])
         if m is None or m.start <= self.e.now():
             raise PlayerError("That game has already started.")
@@ -901,8 +907,6 @@ class PlayerSide:
                 self.e.storage.set_availability_status(conn, window["avail_id"], "joined")
         self._log("PLAYER_REQUEST_BOOKED", pid, {"request_id": request_id, "match_id": m.match_id,
                                                  "verified": verified, "simulated": True})
-        if verified:
-            self._credit_organiser(m.match_id, pid, price_per_player(self.e.policy()))
         self.e.refresh()
         return "You're in: booked and paid." if verified else "Your booking hasn't shown as paid yet."
 
@@ -914,7 +918,7 @@ class PlayerSide:
         """The match, if this player is booked and paid in it; otherwise PlayerError. Chat and teammates are
         only for players actually booked in the game."""
         if self.e.provider_status != "ok":
-            raise PlayerError("The booking system isn't answering right now, so we can't open this game.")
+            raise PlayerError("Playtomic isn't answering right now, so we can't open this game.")
         m = self.e.provider.get_match(match_id)
         required = self.e.policy().booking.required_payment_status
         if m is None or pid not in m.player_ids or m.payment_status != required:
@@ -1069,7 +1073,7 @@ class PlayerSide:
         "seat_gone": "That spot was filled", "court_gone": "That game is off", "opt_out_ack": "Invites turned off",
         "request_approved": "Good news: you can join", "request_declined": "Your request was answered",
         "request_acknowledged": "The club noted your interest", "dropout_ack": "You've left the game",
-        "court_booked": "Court booked", "share_credited": "A new player paid their share",
+        "court_booked": "Court booked in Playtomic",
     }
 
     def notifications(self, pid: str) -> list[dict]:
@@ -1246,41 +1250,59 @@ class PlayerSide:
         self.e.refresh()
 
 
-    # ---- "I can't make it anymore" (with the club's late-cancellation fee) ----------------------------
+    # ---- "I can't make it anymore": Playtomic's rules, not Rally's (Rally charges nothing) ---------------
     def cancel_terms(self, pid: str, m) -> dict:
-        c = self.e.policy().cancellation
-        free_until = m.start - timedelta(hours=c.free_until_hours_before)
-        late = self.e.now() > free_until
-        return {"free_until": f"{day_label(free_until)} {time_label(free_until)}", "late": late,
-                "fee": c.late_fee_usd if late else 0.0, "fee_label": f"${c.late_fee_usd:.0f}",
-                "rule": (f"Free to cancel until {c.free_until_hours_before:.0f} hours before the game; after that "
-                         f"there's a ${c.late_fee_usd:.0f} late-cancellation fee.")}
+        """What Playtomic lets this player do. Open matches: leave anytime if not full; if full, up to 24 hours
+        before; full and inside 24 hours nobody can leave in the app, so the club handles it. Private bookings:
+        the club's own cancellation window in Playtomic. Refunds are Playtomic's, automatic."""
+        now = self.e.now()
+        if m.booking_type == "OPEN_MATCH":
+            locked = m.open_seats == 0 and m.start - now < timedelta(hours=24)
+            return {"can_leave": not locked,
+                    "rule": ("Playtomic: you can leave an open match anytime while it isn't full, or up to 24 hours "
+                             "before once it's full. Refunds are automatic."),
+                    "why_not": ("It's full and less than 24 hours away, so Playtomic won't let anyone leave in the "
+                                "app. Rally can ask the club to take you off.") if locked else ""}
+        return {"can_leave": True, "why_not": "",
+                "rule": "Playtomic: you can leave within the club's cancellation window; refunds follow the club's policy."}
 
     def drop_out(self, pid: str, match_id: str) -> str:
+        """The player leaves in Playtomic (demo: simulated); Rally tells the team and the club."""
         m = self._booked_match(pid, match_id)
         now = self.e.now()
         if m.start <= now:
             raise PlayerError("This game has already started.")
         if self.e.organizer_of(match_id) == pid:
-            raise PlayerError("You organise this game. Please ask the club to change or cancel it.")
+            raise PlayerError("You own this booking in Playtomic, so you can't leave it. Ask the club to cancel it.")
         terms = self.cancel_terms(pid, m)
+        if not terms["can_leave"]:
+            raise PlayerError(terms["why_not"])
         p = self._profile(pid)
-        self.e.provider.simulate_player_dropout(match_id, pid, f"{p.name} dropped out at {time_label(now)}")
+        self.e.provider.simulate_player_dropout(match_id, pid, f"{p.name} left in Playtomic at {time_label(now)}")
+        body = (f"You've left the game on Court {m.court_id[1:]}, {range_label(m.start, m.end)}. Any refund comes "
+                "from Playtomic under its rules.")
         with self.e.storage.connect() as conn:
-            body = (f"You've left the game on Court {m.court_id[1:]}, {range_label(m.start, m.end)}. "
-                    + (f"A {terms['fee_label']} late-cancellation fee applies (simulated)." if terms["late"]
-                       else "No fee: you cancelled in time."))
             self.e.messaging.send(conn, campaign_id=None, invite_id=None, player_id=pid, channel=p.opt_in_channel,
                                   kind="dropout_ack", body=body, now=now)
-        self._log("PLAYER_DROPPED_OUT", pid, {"match_id": match_id, "late": terms["late"],
-                                              "effect": "seat freed in the booking system; teammates alerted"},
-                  opportunity_id=f"MP-{match_id}")
-        if terms["late"]:
-            self._log("LATE_CANCEL_FEE", pid, {"match_id": match_id, "amount_usd": terms["fee"], "simulated": True,
-                                               "rule": terms["rule"]}, opportunity_id=f"MP-{match_id}")
+        self.e._log("PLAYER_DROPPED_OUT", actor=f"player:{pid}", tool="player_app",
+                    detail={"player_id": pid, "match_id": match_id, "where": "Playtomic app (simulated)",
+                            "effect": "seat freed in Playtomic; teammates and club alerted"},
+                    opportunity_id=f"MP-{match_id}")
         self.e.refresh()
         return body
 
+    def ask_club_to_remove_me(self, pid: str, match_id: str) -> str:
+        """Playtomic won't let the player leave (full open match inside 24 hours): Rally passes it to the club."""
+        self._booked_match(pid, match_id)
+        if any(r["kind"] == "dropout_club" and r["status"] == "pending"
+               for r in self.e.storage.requests(target_id=match_id)):
+            raise PlayerError("The club already has a request about this game.")
+        with self.e.storage.connect() as conn:
+            rid = self.e.storage.add_request(conn, pid, match_id, "dropout_club", pid, self.e.now())
+        self._log("PLAYER_DROPOUT_REPORT", pid, {"request_id": rid, "match_id": match_id, "who": pid,
+                                                 "goes_to": "club (takes the player off in Playtomic Manager)"},
+                  opportunity_id=f"MP-{match_id}")
+        return "Sent to the club. They'll take you off in Playtomic and Rally will offer the spot to someone else."
 
     # ---- "Start a game": book a court for your group, then let Rally fill the open spots ------------
     def start_options(self, pid: str) -> dict:
@@ -1335,10 +1357,11 @@ class PlayerSide:
             self.e.storage.add_player_booking(conn, match_id, pid, friends, fee, now)
             self.e.messaging.send(conn, campaign_id=None, invite_id=None, player_id=pid, channel=p.opt_in_channel,
                                   kind="court_booked", now=now,
-                                  body=f"Court {court_id[1:]} is booked for {range_label(start, end)} "
-                                       f"({relative_day(start, now)}). You paid the ${fee:.0f} court fee (simulated).")
+                                  body=f"Court {court_id[1:]} is booked in Playtomic for {range_label(start, end)} "
+                                       f"({relative_day(start, now)}). You paid there (simulated).")
         self._log("PLAYER_BOOKED_COURT", pid, {"match_id": match_id, "court_fee_usd": fee, "guests": friends,
-                                               "simulated": True, "note": "organiser pays the court up front"})
+                                               "simulated": True, "where": "Playtomic app (simulated)",
+                                               "note": "booked and paid in Playtomic; Rally only reads it"})
         self.e.refresh()
         return match_id
 
@@ -1350,10 +1373,9 @@ class PlayerSide:
             raise PlayerError("Pick someone else who's booked in this game.")
         if m.start <= now:
             raise PlayerError("This game has already started.")
-        if self.e.organizer_of(match_id) == pid:
-            return self._apply_dropout(m, who, reported_by=f"player:{pid}")
-        if m.kind != "club_open":
-            raise PlayerError("Only the person who booked this game can change it.")
+        owner = self.e.organizer_of(match_id) == pid
+        if not owner and m.kind != "club_open":
+            raise PlayerError("Only the person who booked this game can report this. Ask them in the game chat.")
         if any(r["kind"] == "dropout_club" and r["status"] == "pending"
                for r in self.e.storage.requests(target_id=match_id)):
             raise PlayerError("Someone already told the club. They'll confirm it soon.")
@@ -1362,6 +1384,12 @@ class PlayerSide:
         self._log("PLAYER_DROPOUT_REPORT", pid, {"request_id": rid, "match_id": match_id, "who": who,
                                                  "goes_to": "club (confirms before anything changes)"},
                   opportunity_id=f"MP-{match_id}")
+        if owner:
+            # the owner's word is enough for Rally to start helping: they can convert to a public match right away
+            with self.e.storage.connect() as conn:
+                self.e.storage.set_organizer_decision(conn, match_id, pid, "rally", now)
+            return ("Sent to the club, who'll take them off in Playtomic, and your teammates are told. Next: make "
+                    "your booking public in Playtomic so Rally can find someone.")
         return "Sent. The club will confirm it, then the spot opens and everyone is told."
 
     def _apply_dropout(self, m, who: str, reported_by: str) -> str:
@@ -1377,7 +1405,7 @@ class PlayerSide:
                                            f"{range_label(m.start, m.end)}, after you let them know you can't make it.")
         self.e._log("PLAYER_DROPPED_OUT", actor=reported_by, tool="player_app",
                     detail={"player_id": who, "match_id": m.match_id, "reported_by": reported_by,
-                            "effect": "seat freed in the booking system; teammates alerted"},
+                            "effect": "seat freed in Playtomic; teammates alerted"},
                     opportunity_id=f"MP-{m.match_id}")
         self.e.refresh()
         return f"{name.split()[0] if who in profiles else 'Your guest'} is off the game and everyone has been told."
@@ -1409,104 +1437,11 @@ class PlayerSide:
         return "Dropout confirmed; the spot is open." if status == "approved" else "Report closed; nothing changed."
 
 
-    def _credit_organiser(self, match_id: str, payer: str, amount: float) -> None:
-        """Start a game: the organiser paid the whole court, so a new player's share goes back to them (simulated)."""
-        booking = self.e.storage.player_bookings().get(match_id)
-        if not booking or booking["organizer_id"] == payer:
-            return
-        org = self._profile(booking["organizer_id"])
-        who = short_name(self._profile(payer).name)
-        with self.e.storage.connect() as conn:
-            self.e.messaging.send(conn, campaign_id=None, invite_id=None, player_id=org.player_id,
-                                  channel=org.opt_in_channel, kind="share_credited", now=self.e.now(),
-                                  body=f"{who} joined your game and paid their ${amount:.0f} share; it has been "
-                                       "credited back to you (simulated).")
-        self.e._log("ORGANISER_CREDITED", actor="code", tool="player_app",
-                    detail={"match_id": match_id, "organiser": org.player_id, "from_player": payer,
-                            "amount_usd": amount, "simulated": True})
-
-
-    # ---- games already booked through the club: link a booking the club system doesn't show players for --
-    def linkable_bookings(self, pid: str) -> list[dict]:
-        """Club bookings in the next 24 hours whose players the club system doesn't share, that no one has linked
-        or asked to link yet. The player picks theirs; the club confirms."""
-        now = self.e.now()
-        if self.e.provider_status != "ok":
-            return []
-        taken = {r["target_id"] for r in self.e.storage.requests() if r["kind"] == "link_booking"
-                 and r["status"] in ("pending", "approved")}
-        out = []
-        for m in self.e.provider.all_matches():
-            if m.kind != "private" or m.players_known or m.match_id in taken:
-                continue
-            if not (now + timedelta(minutes=60) <= m.start <= now + timedelta(hours=24)):
-                continue
-            out.append({"value": m.match_id, "start": m.start,
-                        "label": f"{relative_day(m.start, now).capitalize()} {range_label(m.start, m.end)} · "
-                                 f"Court {m.court_id[1:]}"})
-        return sorted(out, key=lambda x: x["start"])
-
-    def my_link_requests(self, pid: str) -> list[dict]:
-        out = []
-        for r in self.e.storage.requests(player_id=pid):
-            if r["kind"] != "link_booking" or r["status"] not in ("pending", "declined"):
-                continue
-            m = self.e.provider.get_match(r["target_id"]) if self.e.provider_status == "ok" else None
-            if m is None or m.start <= self.e.now():
-                continue
-            by = time_label(datetime.fromisoformat(r["created_at"])
-                            + timedelta(minutes=self.e.policy().club.request_reply_minutes))
-            out.append({"request_id": r["request_id"], "status": r["status"],
-                        "label": f"Court {m.court_id[1:]}, {relative_day(m.start, self.e.now())} {range_label(m.start, m.end)}",
-                        "answer_by": by})
-        return out
-
-    def request_link(self, pid: str, match_id: str, coming: int) -> None:
-        p = self._profile(pid)
-        if p.opt_in_status != "opted_in":
-            raise PlayerError("Turn invites on first, so the club can reply and Rally can help.")
-        if coming not in (1, 2):
-            raise PlayerError("Say how many friends are still coming: 1 or 2.")
-        if match_id not in {b["value"] for b in self.linkable_bookings(pid)}:
-            raise PlayerError("That booking isn't available to link. Pick another, or ask at the front desk.")
-        with self.e.storage.connect() as conn:
-            rid = self.e.storage.add_request(conn, pid, match_id, "link_booking", str(coming), self.e.now())
-        self._log("PLAYER_LINK_REQUEST", pid, {"request_id": rid, "match_id": match_id, "friends_still_coming": coming,
-                                               "goes_to": "club (confirms the booking is theirs)"})
-
-    def decide_link(self, request_id: int, decision: str, decided_by: str) -> str:
-        r = self.e.storage.get_request(request_id)
-        if r is None or r["kind"] != "link_booking" or r["status"] != "pending":
-            raise PlayerError("That request has already been handled.")
-        p = self._profile(r["player_id"])
-        m = self.e.provider.get_match(r["target_id"])
-        now = self.e.now()
-        if decision == "confirm":
-            if m is None or m.players_known:
-                raise PlayerError("That booking already lists its players.")
-            friends = int(r["note"] or "1")
-            guests = [f"GUEST-{m.match_id}-{i + 1}" for i in range(friends)]
-            # the club booking has no level; the owner's level keeps Rally's invites at the right level
-            self.e.provider.link_booking(m.match_id, [p.player_id] + guests,
-                                         f"Club booking linked to {p.name} in Rally (one player dropped out)",
-                                         level=round(p.level, 1))
-            with self.e.storage.connect() as conn:
-                self.e.storage.add_player_booking(conn, m.match_id, p.player_id, friends, 0.0, now)
-            status = "approved"
-            body = (f"Thanks {p.first_name}: the club confirmed your Court {m.court_id[1:]} booking "
-                    f"({range_label(m.start, m.end)}). It's in Rally now. Tap Find someone for me to fill the open spot. "
-                    "Nothing new to pay.")
-        elif decision == "decline":
-            status = "declined"
-            body = (f"Thanks {p.first_name}. The club couldn't match that booking to you. Please check at the "
-                    "front desk.")
-        else:
-            raise PlayerError("Choose confirm or decline.")
-        with self.e.storage.connect() as conn:
-            self.e.storage.set_request(conn, request_id, status, now, decided_by=decided_by)
-            self.e.messaging.send(conn, campaign_id=None, invite_id=None, player_id=p.player_id,
-                                  channel=p.opt_in_channel, kind="request_" + status, body=body, now=now)
-        self.e._log("BOOKING_LINK_" + status.upper(), actor=decided_by, tool="player_requests",
-                    detail={"request_id": request_id, "match_id": r["target_id"], "player_id": p.player_id})
+    def converted_in_playtomic(self, pid: str, match_id: str) -> None:
+        """Demo stand-in for the owner tapping 'Convert to Public Match' in the Playtomic app; Rally reads it back."""
+        if self.e.organizer_of(match_id) != pid:
+            raise PlayerError("Only the owner can convert this booking in Playtomic.")
+        self.e.provider.simulate_convert_to_public(match_id)
+        self._log("BOOKING_CONVERTED_TO_PUBLIC", pid, {"match_id": match_id, "where": "Playtomic app (simulated)"},
+                  opportunity_id=f"MP-{match_id}")
         self.e.refresh()
-        return f"Linked to {p.first_name}; they can now find a 4th." if status == "approved" else f"{p.first_name} has been told."

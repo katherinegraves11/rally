@@ -40,6 +40,7 @@ def test_only_the_organiser_can_authorise_or_approve(engine, side):
 
 def test_organiser_approval_is_the_campaign_scope(engine, side):
     side.organiser_decide(ORG, PRIV, "rally")
+    side.converted_in_playtomic(ORG, PRIV)                         # Playtomic: only the owner can make it public
     cands = side.organiser_candidates(ORG, PRIV)
     picked = [cands[0]["player_id"]]
     cid = side.organiser_approve(ORG, PRIV, picked)
@@ -430,6 +431,7 @@ def test_organiser_hears_about_requests_and_progress(engine, side):
     assert side.latest_unread(ORG)["title"] == "Aisha D. asked to join your game"
     side.mark_all_read(ORG)
     side.organiser_decide(ORG, PRIV, "rally")
+    side.converted_in_playtomic(ORG, PRIV)
     cands = side.organiser_candidates(ORG, PRIV)
     side.organiser_approve(ORG, PRIV, [cands[0]["player_id"]])
     assert side.latest_unread(ORG)["title"].startswith("Rally asked ")
@@ -507,28 +509,6 @@ def _book_into_c2(engine, side):
     return pid
 
 
-def test_drop_out_frees_the_spot_charges_the_late_fee_and_tells_teammates(engine, side):
-    _book_into_c2(engine, side)
-    page = side.game_page("P001", OPEN_C2)
-    assert page["can_drop"] and page["cancel"]["late"]              # the demo game is today: inside 24 h
-    msg = side.drop_out("P001", OPEN_C2)
-    assert "$30 late-cancellation fee" in msg
-    m = engine.provider.get_match(OPEN_C2)
-    assert "P001" not in m.player_ids and "P001" in m.dropout_player_ids
-    assert any(ev["event_type"] == "LATE_CANCEL_FEE" for ev in engine.storage.events())
-    assert side.latest_unread("P002")["title"] == "Daniela M. can't make it anymore"
-    with pytest.raises(PlayerError):
-        side.game_page("P001", OPEN_C2)                            # no longer in the game or its chat
-    assert f"MP-{OPEN_C2}" in _opp_ids(engine)                     # the club sees the open spot again
-
-
-def test_no_fee_when_cancelling_in_time(engine, side):
-    from types import SimpleNamespace
-    later = SimpleNamespace(start=engine.now() + timedelta(hours=48))
-    terms = side.cancel_terms("P001", later)
-    assert not terms["late"] and terms["fee"] == 0
-
-
 def test_the_organiser_cannot_drop_out_of_their_own_game(engine, side):
     with pytest.raises(PlayerError):
         side.drop_out(ORG, PRIV)
@@ -585,16 +565,6 @@ def test_start_a_game_rejects_a_court_that_was_just_taken(engine, side):
         side.start_game("P026", slot, 2, 2.3)
 
 
-def test_organiser_reports_a_friend_dropped_out_and_it_applies_at_once(engine, side):
-    msg = side.report_dropout(ORG, PRIV, "P014")                           # Elif: Ben texted her he can't come
-    assert "off the game" in msg
-    m = engine.provider.get_match(PRIV)
-    assert "P014" not in m.player_ids and "P014" in m.dropout_player_ids
-    assert side.latest_unread("P039")["title"] == "Ben T. can't make it anymore"
-    assert any(n["title"] == "You've left the game" for n in side.notifications("P014"))
-    assert not [e for e in engine.storage.events() if e["event_type"] == "LATE_CANCEL_FEE"]
-
-
 def test_in_a_club_match_the_club_confirms_a_reported_dropout(engine, side):
     msg = side.report_dropout("P001", OPEN_C2, "P002")
     assert "club will confirm" in msg
@@ -611,56 +581,62 @@ def test_a_non_organiser_cannot_change_a_private_booking(engine, side):
         side.report_dropout("P014", PRIV, "P039")
 
 
-def test_new_player_share_is_credited_back_to_the_organiser(engine, side):
-    match_id = side.start_game(AMA, side.start_options(AMA)["slots"][0]["value"], 2, 2.2)
-    side.organiser_decide(AMA, match_id, "rally")
-    first = side.organiser_candidates(AMA, match_id)[0]["player_id"]
-    cid = side.organiser_approve(AMA, match_id, [first])
-    side.reply(first, f"{cid}:{first}", "yes")
-    side.pay(first, f"{cid}:{first}")
-    credits = [e for e in engine.storage.events() if e["event_type"] == "ORGANISER_CREDITED"]
-    assert len(credits) == 1 and credits[0]["detail"]["amount_usd"] == 30
-    assert any(n["title"] == "A new player paid their share" for n in side.notifications(AMA))
-
-
 # ---- games already booked through the club ----------------------------------------------------------------
 CLUB_PRIV = "M-PRIV-1730-C1"   # private club booking, players listed: Aisha (P013, first = owner), P016, P017, P018
 
 
-def test_owner_of_a_visible_club_booking_replaces_a_dropout_without_rebooking(engine, side):
-    assert engine.organizer_of(CLUB_PRIV) == "P013"
-    assert not side.organiser_cards("P013")                                # full and quiet: no extra card
-    g = next(g for g in side.games("P013") if g["match_id"] == CLUB_PRIV)
-    assert g["club_booking"]
-    assert side.game_page("P013", CLUB_PRIV)["report_mode"] == "now"
-    side.report_dropout("P013", CLUB_PRIV, "P016")                         # Maria texted Aisha she can't come
-    card = side.organiser_cards("P013")[0]
-    assert card.stage == "ask"                                             # straight to Find someone for me
-    payments_before = [e for e in engine.storage.events() if e["event_type"] in ("PLAYER_BOOKED_COURT",)]
-    assert not payments_before                                             # nothing rebooked or recharged
+# ---- aligned with Playtomic (2026-11-18): Playtomic's rules, Rally's signal ------------------------------
+def test_leaving_follows_playtomic_rules_and_rally_charges_nothing(engine, side):
+    rules = side.cancel_terms("P001", engine.provider.get_match(OPEN_C2))
+    assert rules["can_leave"]                                              # open match, not full: leave anytime
+    _book_into_c2(engine, side)                                            # now full, and the game is today
+    rules = side.cancel_terms("P001", engine.provider.get_match(OPEN_C2))
+    assert not rules["can_leave"] and "24 hours" in rules["why_not"]
+    with pytest.raises(PlayerError):
+        side.drop_out("P001", OPEN_C2)
+    side.ask_club_to_remove_me("P001", OPEN_C2)                            # Rally passes it to the club
+    rid = side.pending_requests()[0]["request_id"]
+    side.decide_dropout_report(rid, "confirm", "manager:test")             # club takes her off in Playtomic Manager
+    assert "P001" not in engine.provider.get_match(OPEN_C2).player_ids
+    assert side.latest_unread("P002")["title"] == "Daniela M. can't make it anymore"
+    kinds = {e["event_type"] for e in engine.storage.events()}
+    assert "LATE_CANCEL_FEE" not in kinds and "ORGANISER_CREDITED" not in kinds
 
 
-def test_unshared_club_booking_is_linked_after_the_club_confirms(engine, side):
-    options = side.linkable_bookings(AMA)
-    assert options                                                         # club bookings with players not shared
-    target = options[0]["value"]
-    side.request_link(AMA, target, 2)
-    assert target not in {b["value"] for b in side.linkable_bookings("P026")}   # nobody else can claim it now
-    req = [r for r in side.pending_requests() if r["kind"] == "link_booking"][0]
-    assert engine.organizer_of(target) != AMA                              # nothing changes before the club confirms
-    side.decide_link(req["request_id"], "confirm", "manager:test")
-    m = engine.provider.get_match(target)
-    assert m.players_known and m.player_ids[0] == AMA and m.open_seats == 1
-    assert m.level == 2.2                                                  # owner's level, so invites fit
-    assert engine.organizer_of(target) == AMA
-    assert side.organiser_cards(AMA)[0].stage == "ask"
-    assert engine.storage.player_bookings()[target]["court_fee_usd"] == 0  # already paid through the club
+def test_player_can_leave_a_match_that_is_not_full(engine, side):
+    msg = side.drop_out("P001", OPEN_C2)                                   # 3/4: Playtomic allows it
+    assert "Playtomic" in msg and "fee" not in msg
+    assert "P001" not in engine.provider.get_match(OPEN_C2).player_ids
 
 
-def test_club_can_say_a_linked_booking_isnt_theirs(engine, side):
-    target = side.linkable_bookings(AMA)[0]["value"]
-    side.request_link(AMA, target, 1)
-    req = [r for r in side.pending_requests() if r["kind"] == "link_booking"][0]
-    side.decide_link(req["request_id"], "decline", "manager:test")
-    assert not engine.provider.get_match(target).players_known
-    assert side.my_link_requests(AMA)[0]["status"] == "declined"
+def test_owner_of_a_playtomic_booking_comes_from_owner_id(engine, side):
+    m = engine.provider.get_match(PRIV)
+    assert m.owner_id == ORG and m.player_ids[0] != ORG                    # not "first listed player"
+    assert engine.organizer_of(PRIV) == ORG
+    assert engine.organizer_of("M-PRIV-1730-C1") == "P013"                 # club bookings carry an owner too
+
+
+def test_lost_a_player_signal_reaches_the_club_then_owner_converts_then_rally_fills(engine, side):
+    msg = side.report_dropout(ORG, PRIV, "P014")                           # Ben texted Elif he can't come
+    assert "club" in msg
+    assert "P014" in engine.provider.get_match(PRIV).player_ids            # Rally can't edit Playtomic itself
+    rid = side.pending_requests()[0]["request_id"]
+    side.decide_dropout_report(rid, "confirm", "manager:test")             # club updates it in Playtomic Manager
+    assert "P014" not in engine.provider.get_match(PRIV).player_ids
+    card = side.organiser_cards(ORG)[0]
+    assert card.stage == "convert"                                         # only the owner can make it public
+    with pytest.raises(PlayerError):
+        side.organiser_approve(ORG, PRIV, ["P038"])
+    side.converted_in_playtomic(ORG, PRIV)
+    assert engine.provider.get_match(PRIV).booking_type == "OPEN_MATCH"
+    assert side.organiser_cards(ORG)[0].stage == "choose"
+    assert side.organiser_candidates(ORG, PRIV)
+
+
+def test_organiser_game_invites_state_no_price(engine, side):
+    side.organiser_decide(ORG, PRIV, "rally")
+    side.converted_in_playtomic(ORG, PRIV)
+    first = side.organiser_candidates(ORG, PRIV)[0]["player_id"]
+    cid = side.organiser_approve(ORG, PRIV, [first])
+    body = engine.storage.messages(cid, first)[0]["body"]
+    assert "$" not in body and "Playtomic" in body                         # Playtomic decides what a joiner pays

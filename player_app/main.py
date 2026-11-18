@@ -297,17 +297,6 @@ def post_chat(pid: str, match_id: str, text: str = Form("")):
     return RedirectResponse(f"/p/{pid}/game/{match_id}#chat-end", status_code=303)
 
 
-@app.post("/p/{pid}/link")
-def link_booking(pid: str, match_id: str = Form(...), coming: int = Form(...)):
-    with _lock:
-        _ensure()
-        try:
-            side.request_link(pid, match_id, coming)
-        except (PlayerError, ValueError) as exc:
-            return _back(pid, err=str(exc))
-    return _back(pid, msg="Sent to the club. Once they confirm it's yours, you can choose who Rally asks.")
-
-
 @app.post("/p/{pid}/start")
 def start_game(pid: str, slot: str = Form(...), friends: int = Form(...), level: float = Form(...)):
     with _lock:
@@ -316,7 +305,7 @@ def start_game(pid: str, slot: str = Form(...), friends: int = Form(...), level:
             match_id = side.start_game(pid, slot, friends, level)
         except (PlayerError, ValueError) as exc:
             return _back(pid, err=str(exc))
-    return _back(pid, msg="Court booked. Next: tap Find someone for me on your game, and Rally fills the open spots.")
+    return _back(pid, msg="Booked in Playtomic. Next: tap Find someone for me on your game.")
 
 
 @app.post("/p/{pid}/game/{match_id}/report-dropout")
@@ -327,9 +316,29 @@ def report_dropout(pid: str, match_id: str, who: str = Form(...)):
             msg = side.report_dropout(pid, match_id, who)
         except (PlayerError, ValueError) as exc:
             return _back(pid, f"/game/{match_id}", err=str(exc))
-    if _engine.organizer_of(match_id) == pid:
-        return _back(pid, msg=msg + " Tap Find someone for me to fill the spot.")
+    return _back(pid, msg=msg) if _engine.organizer_of(match_id) == pid else _back(pid, f"/game/{match_id}", msg=msg)
+
+
+@app.post("/p/{pid}/game/{match_id}/ask-club")
+def ask_club_remove(pid: str, match_id: str):
+    with _lock:
+        _ensure()
+        try:
+            msg = side.ask_club_to_remove_me(pid, match_id)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, f"/game/{match_id}", err=str(exc))
     return _back(pid, f"/game/{match_id}", msg=msg)
+
+
+@app.post("/p/{pid}/organise/{match_id}/converted")
+def converted(pid: str, match_id: str):
+    with _lock:
+        _ensure()
+        try:
+            side.converted_in_playtomic(pid, match_id)
+        except (PlayerError, ValueError) as exc:
+            return _back(pid, err=str(exc))
+    return _back(pid, f"/organise/{match_id}")
 
 
 @app.post("/p/{pid}/game/{match_id}/drop")

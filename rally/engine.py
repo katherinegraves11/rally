@@ -73,7 +73,11 @@ class RallyEngine:
         policy = self.policy()
         self.tz = ZoneInfo(policy.club.timezone)
         self.storage = Storage(self.runtime_dir / "rally.db")
-        self.provider = MockBookingProvider(self.runtime_dir / "mock_provider.db", self.data_dir)
+        if os.environ.get("RALLY_PROVIDER") == "playtomic":   # real club data, read-only (rally/playtomic.py)
+            from .playtomic import PlaytomicProvider
+            self.provider = PlaytomicProvider.from_env(policy.club.timezone)
+        else:
+            self.provider = MockBookingProvider(self.runtime_dir / "mock_provider.db", self.data_dir)
         self.occupancy = OccupancyProfile.from_csv(self.data_dir / "occupancy_profile.csv")
         self.messaging = SimulatedMessagingAdapter(self.storage)
         self.llm = LLMService(self._llm_mode, self._llm_model, default_model=policy.llm.default_model)
@@ -102,15 +106,10 @@ class RallyEngine:
             return {r["match_id"]: r["organizer_id"] for r in csv.DictReader(f)}
 
     def _all_organizers(self) -> dict[str, str]:
-        """Who owns each private booking. Lowest to highest precedence: the club booking system's owner (the mock
-        provider has no owner field, so the first listed player stands in for it), bookings made or linked in the
-        player app, then the fixture organisers."""
-        out = {m.match_id: m.player_ids[0] for m in self.provider.all_matches()
-               if m.kind == "private" and m.players_known and m.player_ids and m.created_by == "seed"
-               and m.player_ids[0] in self._players}
-        out.update({m: b["organizer_id"] for m, b in self.storage.player_bookings().items()})
-        out.update(self._organizers)
-        return out
+        """Who owns each player booking: Playtomic's participant_info.owner_id, for owners who are Rally members.
+        Club-managed open matches have no owner here (the club runs them)."""
+        return {m.match_id: m.owner_id for m in self.provider.all_matches()
+                if m.owner_id and m.owner_id in self._players and m.kind == "private"}
 
     def organizer_of(self, match_id: str) -> str | None:
         return self._all_organizers().get(match_id)

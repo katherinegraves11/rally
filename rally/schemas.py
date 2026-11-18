@@ -71,6 +71,9 @@ class Match(BaseModel):
     dropout_player_ids: list[str] = Field(default_factory=list)
     created_by: str = "seed"
     note: str = ""
+    # Playtomic fields (Bookings API): participant_info.owner_id and booking_type
+    owner_id: Optional[str] = None
+    booking_type: str = "REGULAR_BOOKING"     # REGULAR_BOOKING | OPEN_MATCH (others not used by Rally)
 
     @property
     def open_seats(self) -> int:

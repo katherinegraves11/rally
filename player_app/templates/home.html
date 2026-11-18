@@ -20,7 +20,7 @@
         <span class="grow"><span class="name">{{ g.when }}</span><br>
           <span class="sub">{{ g.court }} · level {{ g.level }} · {{ g.players }} in</span></span>
         <form method="post" action="/p/{{ pid }}/join/{{ g.opportunity_id }}">
-          <button class="btn small primary">Join · ${{ g.price }}</button></form>
+          <button class="btn small primary">Join in Playtomic · ${{ g.price }}</button></form>
       </div>
       {% endfor %}
     {% else %}
@@ -83,7 +83,7 @@
     {% if r.note %}<div class="hint">Your note: “{{ r.note }}”</div>{% endif %}
   </div>
   {% if r.can_pay %}
-  <form method="post" action="/p/{{ pid }}/request/{{ r.request_id }}/pay" class="btns"><button class="btn primary">Book and pay ${{ r.price }}</button></form>
+  <form method="post" action="/p/{{ pid }}/request/{{ r.request_id }}/pay" class="btns"><button class="btn primary">Join in Playtomic · ${{ r.price }}</button></form>
   {% endif %}
   {% if r.status in ('pending', 'acknowledged') %}
   <form method="post" action="/p/{{ pid }}/request/{{ r.request_id }}/withdraw" style="margin-top:8px"><button class="btn small ghost" style="opacity:.75">Withdraw</button></form>
@@ -105,7 +105,7 @@
 {% endmacro %}
 
 {% macro org_card(o) %}
-<div class="card {{ 'hero' if o.stage in ('ask', 'choose') or o.fill_requests else '' }}">
+<div class="card {{ 'hero' if o.stage in ('ask', 'choose', 'convert') or o.fill_requests else '' }}">
   <div class="eyebrow">YOUR GAME · {{ o.court }}</div>
   <div class="big">{{ o.when }}</div>
   <div class="meta">Level {{ o.level }} · {{ o.players_in }} of {{ o.capacity }} players</div>
@@ -119,6 +119,10 @@
     {% if o.stage == 'ask' %}<button class="btn ghost" name="mode" value="self">I'll find someone</button>{% endif %}
     <button class="btn primary" name="mode" value="rally">Find someone for me</button>
   </form>
+  {% elif o.stage == 'convert' %}
+  <form method="post" action="/p/{{ pid }}/organise/{{ o.match_id }}/converted" class="btns">
+    <button class="btn primary">Done in Playtomic (demo)</button></form>
+  <div class="hint">In the real app this opens your booking in Playtomic, where you tap Convert to Public Match.</div>
   {% elif o.stage == 'choose' %}
   <div class="btns"><a class="btn primary" href="/p/{{ pid }}/organise/{{ o.match_id }}">Choose players</a></div>
   {% endif %}
@@ -146,7 +150,7 @@
     <b>{{ c.headline }}</b>{{ c.detail }}{% if c.reply_by %} Reply by {{ c.reply_by }}.{% endif %}
   </div>
   {% if c.can_pay %}
-  <form method="post" action="/p/{{ pid }}/pay/{{ c.invite_id }}" class="btns"><button class="btn primary">Book and pay ${{ c.price }}</button></form>
+  <form method="post" action="/p/{{ pid }}/pay/{{ c.invite_id }}" class="btns"><button class="btn primary">Join in Playtomic · ${{ c.price }}</button></form>
   {% endif %}
   {% if c.can_reply %}
   <div class="btns">
@@ -170,8 +174,8 @@
 
 {% set pay_requests = free.requests | selectattr("can_pay") | list %}
 {% set other_requests = free.requests | rejectattr("can_pay") | list %}
-{% set org_needs = organiser_cards | selectattr("stage", "in", ["ask", "choose"]) | list %}
-{% set org_other = organiser_cards | rejectattr("stage", "in", ["ask", "choose"]) | list %}
+{% set org_needs = organiser_cards | selectattr("stage", "in", ["ask", "choose", "convert"]) | list %}
+{% set org_other = organiser_cards | rejectattr("stage", "in", ["ask", "choose", "convert"]) | list %}
 {% set n_needs = needs_cards|length + pay_requests|length + org_requests|length + org_needs|length %}
 
 {# ---- 1. Needs you: everything waiting on this player ---- #}
@@ -220,32 +224,11 @@
 <div class="card" id="need4">
   <div class="eyebrow">NEED A 4TH?</div>
   <div class="big" style="font-size:19px">Someone dropped out of your game?</div>
-  <div class="meta">If Rally can see your booking, open it under Your games and tap <b>Someone dropped out</b>. Otherwise:</div>
-
-  {% for lr in link_requests %}
-  <div class="status {{ 'wait' if lr.status == 'pending' else 'off' }}">
-    {% if lr.status == 'pending' %}<b>Asked the club to confirm your booking</b>{{ lr.label }}. The club aims to answer by {{ lr.answer_by }}.
-    {% else %}<b>The club couldn't match that booking</b>{{ lr.label }}. Please check at the front desk.{% endif %}
-  </div>
-  {% endfor %}
-
-  {% if linkable %}
-  <details class="thread" style="margin-top:14px">
-    <summary>Already booked through the club? Find my booking</summary>
-    <form method="post" action="/p/{{ pid }}/link" style="margin-top:10px">
-      <span class="fact-k">Your booking</span>
-      <select name="match_id" aria-label="Your booking">{% for b in linkable %}<option value="{{ b.value }}">{{ b.label }}</option>{% endfor %}</select>
-      <span class="fact-k" style="display:block;margin-top:10px">Still coming</span>
-      <select name="coming" aria-label="Still coming"><option value="2">Me + 2 friends (1 spot to fill)</option><option value="1">Me + 1 friend (2 spots to fill)</option></select>
-      <div class="status off" style="margin-top:12px"><b>Nothing new to pay</b>The club confirms it's your booking, then you choose who Rally may ask.</div>
-      <div class="btns"><button class="btn primary">Send to the club</button></div>
-    </form>
-  </details>
-  {% endif %}
+  <div class="meta">Your Playtomic bookings show under Your games. Open it and tap <b>Someone dropped out</b>: Rally tells the club and your teammates, and helps you fill the spot.</div>
 
   {% if start.slots %}
   <details class="thread" style="margin-top:10px" id="start">
-    <summary>No court yet? Start a game</summary>
+    <summary>No court yet? Book in Playtomic</summary>
     <form method="post" action="/p/{{ pid }}/start" style="margin-top:10px">
       <span class="fact-k">When</span>
       <select name="slot" aria-label="When">{% for s in start.slots %}<option value="{{ s.value }}">{{ s.label }}</option>{% endfor %}</select>
@@ -254,8 +237,8 @@
         <select name="friends" aria-label="Who's coming"><option value="2">Me + 2 friends</option><option value="1">Me + 1 friend</option></select>
         <select name="level" aria-label="Level">{% for l in start.levels %}<option value="{{ l }}" {{ 'selected' if l == start.my_level else '' }}>{{ '%.1f'|format(l) }}</option>{% endfor %}</select>
       </div>
-      <div class="status off" style="margin-top:12px"><b>You pay the ${{ '%.0f'|format(start.court_fee) }} court fee now</b>Like booking in the club app; settle up with your friends yourselves. When Rally finds a player, they pay their ${{ start.share }} share and it comes back to you.</div>
-      <div class="btns"><button class="btn primary">Book court · ${{ '%.0f'|format(start.court_fee) }}</button></div>
+      <div class="status off" style="margin-top:12px"><b>You book and pay in Playtomic (${{ '%.0f'|format(start.court_fee) }} court)</b>Rally can't book for you. If you pay the whole court, the player Rally finds joins free; if you split it, they pay a share.</div>
+      <div class="btns"><button class="btn primary">Book in Playtomic (demo)</button></div>
     </form>
   </details>
   {% endif %}

@@ -41,7 +41,9 @@ def invite_facts(opp: Opportunity, policy: ClubPolicy, now: datetime, group_leve
         "game_type": (f"{opp.organizer_name}'s game, one spot left" if opp.organizer_name
                       else "open match with one spot left") if opp.type == OpportunityType.MISSING_PLAYER
                      else "new game for four (goes ahead only once 4 players say yes and book)",
-        "price_per_player_usd": price_per_player(policy),
+        # Playtomic decides what a joiner pays in a player's converted booking (single payer: nothing; split
+        # payment: a share), and the API doesn't say which, so organiser-game invites state no price.
+        "price_per_player_usd": None if opp.organizer_name else price_per_player(policy),
         "reply_options": "YES to join, NO to pass",
         "opt_out_line": "Reply STOP to opt out.",
     }
@@ -49,7 +51,11 @@ def invite_facts(opp: Opportunity, policy: ClubPolicy, now: datetime, group_leve
 
 def template_invite(opp: Opportunity, facts: dict) -> str:
     if opp.type == OpportunityType.MISSING_PLAYER:
-        game = f"{opp.organizer_name}'s game" if opp.organizer_name else "Our open match"
+        if opp.organizer_name:
+            return (f"Hi {{first_name}}, it's {facts['club']}. {opp.organizer_name}'s game {facts['when']} on "
+                    f"{facts['court']} (level {facts['level']}) has 1 spot left. Want it? Reply YES and we'll send "
+                    "the Playtomic link, or NO to pass. Reply STOP to opt out.")
+        game = "Our open match"
         return (f"Hi {{first_name}}, it's {facts['club']}. {game} {facts['when']} on {facts['court']} "
                 f"(level {facts['level']}) has 1 spot left. Want it? Reply YES to join or NO to pass. "
                 f"${facts['price_per_player_usd']}/player. Reply STOP to opt out.")
@@ -77,7 +83,9 @@ def validate_invite_text(text: str, facts: dict) -> list[str]:
     if re.search(r"https?://|www\.", text, re.I):
         problems.append("contains a link (booking links are only sent after a clear yes)")
     prices = {int(p) for p in re.findall(r"\$\s?(\d+)", text)}
-    if prices - {facts["price_per_player_usd"]}:
+    if facts["price_per_player_usd"] is None and prices:
+        problems.append("mentions a price, but Playtomic sets what a joiner pays in this game")
+    elif prices - {facts["price_per_player_usd"]}:
         problems.append(f"mentions a price other than ${facts['price_per_player_usd']}/player")
     return problems
 
@@ -94,17 +102,17 @@ def booking_link(policy: ClubPolicy, opportunity_id: str, invite_id: str) -> str
 def follow_up(kind: str, *, first_name: str, policy: ClubPolicy, opp: Opportunity, link: str = "") -> str:
     when = f"{day_label(opp.start)} {range_label(opp.start, opp.end)}"
     texts = {
-        "booking_link_missing": (f"You're in, {first_name}! Complete your booking for {when} on {opp.court_name} "
-                                 f"here: {link} (simulated link). Your spot is confirmed once the booking shows as "
-                                 f"paid; it is held for {policy.timing.booking_hold_minutes} min."),
+        "booking_link_missing": (f"You're in, {first_name}! Join the game for {when} on {opp.court_name} in "
+                                 f"Playtomic: {link} (simulated link). Your spot counts once Playtomic shows you in "
+                                 f"the match and paid; we hold it for {policy.timing.booking_hold_minutes} min."),
         "booking_link_group": (f"Great news, {first_name}: your group of 4 is set for {when} on {opp.court_name}. "
-                               f"Book and pay your share here: {link} (simulated link). The court is held for "
-                               f"{policy.timing.booking_hold_minutes} min."),
+                               f"Join the open match the club set up in Playtomic and pay your share: {link} "
+                               f"(simulated link). Held for {policy.timing.booking_hold_minutes} min."),
         "waitlist": (f"Thanks {first_name}! The 4 spots for {when} just filled, so you're on the waitlist. "
                      "We'll message you if a spot opens."),
         "seat_gone": f"Sorry {first_name}, that spot for {when} was just filled. Thanks for the quick reply!",
         "court_gone": (f"Sorry {first_name}, {opp.court_name} for {when} was just booked by another customer, "
-                       "so this game is off. No charge."),
+                       "so this game is off. No charge; anything paid in Playtomic is refunded automatically."),
         "opt_out_ack": f"You're unsubscribed from {policy.club.name} Rally invites. You won't get more of these.",
     }
     return texts[kind]

@@ -20,7 +20,7 @@
   <main>
     {% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
     {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
-    {% if provider_ok is defined and not provider_ok %}<div class="flash err">The club's booking system isn't answering right now. Nothing can be booked until it's back; you won't be charged.</div>{% endif %}
+    {% if provider_ok is defined and not provider_ok %}<div class="flash err">Playtomic isn't answering right now. Nothing can be booked until it's back; you won't be charged.</div>{% endif %}
     {% block main %}{% endblock %}
   </main>
   {% if pid %}

@@ -49,7 +49,8 @@ Rules:
 - Include the day and time exactly as given in "when", the court name, and the level.
 - Say how to reply: YES to join, NO to pass.
 - End with the exact sentence: Reply STOP to opt out.
-- You may mention the price only as given (price_per_player_usd, per player). No other numbers or promises.
+- You may mention the price only as given (price_per_player_usd, per player); if it is null, mention no price.
+  No other numbers or promises.
 - For a new game for four, say plainly that it only goes ahead once 4 players say yes and book; never
   promise anyone a spot.
 - Describe the game exactly as "game_type" does; never name other players.

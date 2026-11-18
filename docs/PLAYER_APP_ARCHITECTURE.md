@@ -125,7 +125,7 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
    - Every booked player gets a "Your game is full" alert when the spot is filled.
 
 10. **Panel fixes, second review (2026-11-17, Katie approved all seven).**
-    1. **"I can't make it anymore"** on the game page for booked players (not the organiser). It frees the
+    1. *(Fee part replaced 2026-11-18: see "The Playtomic connection".)* **"I can't make it anymore"** on the game page for booked players (not the organiser). It frees the
        spot in the booking system, tells teammates (alert), and the open spot reaches the club or
        organiser through the usual detection. Too close to start for Rally: the page says to tell the
        front desk too.
@@ -167,7 +167,7 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
       **club confirms it** on the dashboard before anything changes, so one player can't remove
       another by mistake.
 
-12. **Games already booked through the club (added 2026-11-17, Katie: "they already paid and booked;
+12. *(Link request replaced 2026-11-18 by Playtomic's `owner_id`: see "The Playtomic connection".)* **Games already booked through the club (added 2026-11-17, Katie: "they already paid and booked;
     they don't want to double").** Rally never rebooks or recharges an existing booking; it only helps
     replace the missing player.
     - **The booking owner** is the player the club's booking system names as owner (Playtomic's data
@@ -182,6 +182,76 @@ millennial). Journeys A (organiser dropout: Ludovica, Brian) and B (solo player:
       paid, no new charge) and the owner
       uses "Find someone for me". New players pay their $30 share as usual, credited to the owner.
     - Owners' full games with nothing happening don't get an organiser card (no clutter).
+
+## The Playtomic connection: what is real (researched 2026-11-18, Katie: "do everything in accordance with a real Playtomic connection")
+
+Sources: Playtomic Third Party API reference (third-party.playtomic.io: Bookings, Players, Payments) and
+Playtomic player help articles on converting a private booking to a public match, open-match cancellation,
+and cancelling a reservation. Where Playtomic's docs are silent, this says so instead of guessing.
+
+**What Rally can read (GET only, club credentials).** The club generates credentials in Playtomic
+Manager (Settings → Developer tools); chains go through Customer Support. Bearer token. The docs list
+no write endpoints, no webhooks and no rate limits; the API may change or be discontinued with a
+month's notice, and bookings older than three months are not returned. Rally therefore **polls**.
+- `GET /api/v1/bookings` (tenant_id, date range, participant_id, booking_type, sport_id, status):
+  `booking_id`, `resource_id`/`resource_name` (court), `booking_start_date`/`booking_end_date`,
+  `booking_type` (`REGULAR_BOOKING`, `OPEN_MATCH`, ...), `price` (whole booking), `payment_status`
+  (`UNPAID`, `PARTIAL_PAID`, `PAID`, ...), `is_canceled`, `participant_info.owner_id` (the owner, who
+  "cannot leave and pays for single payments") and `participants` (`participant_type` CUSTOMER /
+  GUEST / CONTACT).
+- `GET /api/v1/venues/{venue_id}/players` (include SPORTS): name, email, phone,
+  `accepts_commercial_communications`, and per-sport `level_value`.
+- `GET /api/v1/payments`: `PAID` / `REFUNDED` records (read-only).
+- Not documented: a level or level range on a booking, seat counts, payment mode (single payer vs
+  split), match chat. Rally works these out (padel = 4 players; level from the players' levels) or
+  leaves them to Playtomic.
+
+**What only Playtomic can do, so Rally hands off and then reads back.** Booking a court, joining an
+open match, paying, leaving or cancelling, converting a private booking to a public match, and the
+match chat all happen in the Playtomic app (or Playtomic Manager for the club). Rally opens the right
+Playtomic screen and then confirms the result from the API. In this demo the handoff is simulated by a
+clearly labelled "Done in Playtomic (demo)" step that updates the mock provider the way Playtomic would.
+
+**Playtomic's own rules that Rally now follows (instead of inventing its own):**
+- **Dropout in your own booking:** the owner taps **Convert to Public Match** in Playtomic. Only for
+  padel/tennis, when every invited player has an account, a level and has paid their share, no one
+  paid cash or at the club, and the club allows open matches. It can't be undone, the level range
+  becomes 0–7 (so Rally's level matching is what keeps invites at the right level), and the owner
+  can't leave and pays for empty spots. Single payer: joiners pay nothing. Split payment: joiners pay
+  the normal share. Rally then invites only players who fit, with the Playtomic match link.
+- **Leaving an open match:** not full, anytime; full, up to 24 hours before; full and inside 24 hours,
+  no one can leave in the app; players ask in the match chat and the club handles it in Playtomic
+  Manager. Refunds are automatic when a player leaves or a match is cancelled.
+- **Cancelling a reservation:** within the club's own cancellation window only; outside it, the app
+  can't cancel and the player contacts the club.
+- So **Rally does not charge fees, book courts, move money or credit organisers.** The $30 late fee and
+  the organiser credit from earlier this week are removed; Rally shows Playtomic's rule and, where the
+  app won't let a player leave, passes the request to the club.
+
+**What changed in the player app (2026-11-18; scope: the customer app only, the club dashboard is
+built by others and was not changed).** Most of the app already fitted Playtomic; only these moved:
+- **No Rally fees or credits.** The $30 late-cancellation fee (item 10.1) and the organiser credit
+  (item 11) are removed. "I can't make it anymore" shows Playtomic's rule and offers **Leave in
+  Playtomic**; when Playtomic won't allow it (full open match inside 24 hours) it offers **Ask the club to
+  take me off**, which reaches the club's Player requests.
+- **"I lost a player" is a Rally signal.** The booking owner taps **Someone dropped out**; Rally sends it
+  to the club (which takes the player off in Playtomic Manager) and to the teammates. **Clubs cannot
+  convert a private booking to an open match; only the owner can, in the Playtomic app** (Playtomic
+  Manager help, checked 2026-11-18). So the owner's card then shows **Step 1: make it public in
+  Playtomic** (demo: "Done in Playtomic"), and only after that can Rally invite anyone ("Find someone
+  for me"). Invites for these games state no price: Playtomic decides (single payer: the joiner pays
+  nothing; split payment: a share).
+- **Booking ownership comes from Playtomic's `owner_id`.** The "find my booking" link request (item 12)
+  is removed: the API already says whose booking it is.
+- **Start a game → "Book in Playtomic".** Rally can't book; the demo button stands in for booking and
+  paying in Playtomic, then Rally reads the booking back.
+- **Wording:** "booking system" → "Playtomic"; "Book and pay" → "Join in Playtomic".
+- **Kept as built:** invites and replies, I'm free, ask about a game, game page, Rally's game chat
+  (Playtomic also has a match chat, which Rally can't read or post to), alerts, Needs you, Start a game.
+- **Code:** `rally/playtomic.py` is a read-only adapter for the real API (bookings + players, the field
+  names above) behind the same read interface as the mock; `RALLY_PROVIDER=playtomic` with
+  `PLAYTOMIC_TOKEN` and `PLAYTOMIC_VENUE_ID` switches it on, and it refuses every write. The mock now
+  carries Playtomic's `owner_id` and `booking_type`.
 
 ## Engine additions (`rally/`)
 
