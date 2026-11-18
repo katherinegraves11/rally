@@ -247,7 +247,8 @@ built by others and was not changed).** Most of the app already fitted Playtomic
   paying in Playtomic, then Rally reads the booking back.
 - **Wording:** "booking system" → "Playtomic"; "Book and pay" → "Join in Playtomic".
 - **Kept as built:** invites and replies, I'm free, ask about a game, game page, Rally's game chat
-  (Playtomic also has a match chat, which Rally can't read or post to), alerts, Needs you, Start a game.
+  (Playtomic also has a match chat, which Rally can't read or post to; Katie chose on 2026-11-18 to keep
+  Rally's chat), alerts, Needs you, Start a game.
 - **Code:** `rally/playtomic.py` is a read-only adapter for the real API (bookings + players, the field
   names above) behind the same read interface as the mock; `RALLY_PROVIDER=playtomic` with
   `PLAYTOMIC_TOKEN` and `PLAYTOMIC_VENUE_ID` switches it on, and it refuses every write. The mock now
